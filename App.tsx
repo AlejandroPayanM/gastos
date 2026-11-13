@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { periodFor, shiftPeriod, todayStr } from './src/dates';
 import { TxForm } from './src/forms';
@@ -15,7 +15,10 @@ import { C } from './src/theme';
 import type { Mode, Period } from './src/types';
 import { Segmented } from './src/ui';
 
-type Tab = 'resumen' | 'movimientos' | 'historial' | 'estimacion' | 'fijos' | 'cuentas';
+// En la versión web gratuita de Netlify aparece una insignia flotante abajo; se sube el menú para que no lo tape.
+const WEB_LIFT = Platform.OS === 'web' ? 56 : 0;
+
+type Tab ='resumen' | 'movimientos' | 'historial' | 'estimacion' | 'fijos' | 'cuentas';
 
 const TABS: { key: Tab; icon: string; label: string; title: string }[] = [
   { key: 'resumen', icon: '📊', label: 'Resumen', title: 'Resumen' },
@@ -93,11 +96,11 @@ function Shell() {
           {tab === 'cuentas' && <Cuentas />}
         </View>
 
-        <Pressable style={st.fab} onPress={() => setAdding(true)}>
+        <Pressable style={[st.fab, { bottom: 80 + WEB_LIFT }]} onPress={() => setAdding(true)}>
           <Text style={st.fabText}>＋</Text>
         </Pressable>
 
-        <View style={st.tabbar}>
+        <View style={[st.tabbar, { marginBottom: WEB_LIFT }]}>
           {TABS.map((t) => (
             <Pressable key={t.key} style={st.tab} onPress={() => setTab(t.key)}>
               <Text style={{ fontSize: 18, opacity: tab === t.key ? 1 : 0.45 }}>{t.icon}</Text>
