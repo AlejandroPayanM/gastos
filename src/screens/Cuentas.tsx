@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import { C } from '../theme';
 import type { Account } from '../types';
 import { BackupSheet } from '../backup';
+import { CloudCard } from '../cloud/CloudUI';
 import { Button, Card, Row, SectionTitle } from '../ui';
 
 export function Cuentas() {
@@ -96,6 +97,7 @@ export function Cuentas() {
         )}
 
         <SectionTitle>Datos</SectionTitle>
+        <CloudCard />
         <Button kind="ghost" label="Respaldo: guardar o restaurar datos" onPress={() => setBackup(true)} />
       </ScrollView>
       <BackupSheet visible={backup} onClose={() => setBackup(false)} />

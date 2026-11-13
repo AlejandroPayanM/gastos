@@ -2,6 +2,8 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { CloudGate } from './src/cloud/CloudUI';
+import { CloudProvider } from './src/cloud/CloudProvider';
 import { periodFor, shiftPeriod, todayStr } from './src/dates';
 import { cycleOf } from './src/finance';
 import { TxForm } from './src/forms';
@@ -115,6 +117,7 @@ function Shell() {
         </View>
       </View>
       <TxForm visible={adding} onClose={() => setAdding(false)} />
+      <CloudGate />
     </SafeAreaView>
   );
 }
@@ -123,7 +126,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StoreProvider>
-        <Shell />
+        <CloudProvider>
+          <Shell />
+        </CloudProvider>
       </StoreProvider>
     </SafeAreaProvider>
   );

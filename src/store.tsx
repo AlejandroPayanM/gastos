@@ -35,6 +35,8 @@ interface Store {
   setOverride: (key: string, amount: number | null) => void;
   /** Estimado propio de gasto variable por quincena (undefined = usar el promedio). */
   setVariableEstimate: (amount: number | undefined) => void;
+  /** Reemplaza todos los datos locales (lo usa la sincronización con la nube). */
+  replaceDb: (db: DB) => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -110,6 +112,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
   const setVariableEstimate = useCallback((amount: number | undefined) => setDb((d) => ({ ...d, settings: { ...d.settings, variableEstimate: amount } })), []);
 
+  const replaceDb = useCallback((next: DB) => setDb(next), []);
+
   const restore = useCallback((json: string) => {
     let data: any;
     try {
@@ -125,8 +129,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate }),
-    [db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate],
+    () => ({ db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate, replaceDb }),
+    [db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate, replaceDb],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
