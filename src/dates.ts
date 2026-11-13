@@ -1,4 +1,4 @@
-import type { Mode, Period } from './types';
+import type { Mode, Period, WeekendRule } from './types';
 
 export const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -62,7 +62,43 @@ export function formatLong(s: string) {
   return `${DIAS_CORTO[weekdayMon(s)]} ${d} ${MESES_CORTO[m - 1]} ${y}`;
 }
 
-export function periodFor(mode: Mode, s: string): Period {
+/** Mueve sábado/domingo al viernes anterior o al lunes siguiente, según la regla. */
+export function shiftWeekend(date: string, rule: WeekendRule) {
+  if (rule === 'igual') return date;
+  const w = weekdayMon(date); // 0 = lunes … 5 = sábado, 6 = domingo
+  if (w < 5) return date;
+  return rule === 'viernes' ? addDays(date, -(w - 4)) : addDays(date, 7 - w);
+}
+
+/**
+ * Quincena "de paga a paga": empieza el día que cobras y termina el día antes de la siguiente paga.
+ * `days` son los días nominales de cobro (p. ej. 15 y 31) y `rule` qué pasa si caen en fin de semana.
+ */
+export interface Cycle {
+  days: number[];
+  rule: WeekendRule;
+}
+
+/** Fechas de cobro (ya ajustadas por fin de semana) entre dos meses antes y después de `s`. */
+export function paydays(cycle: Cycle, s: string): string[] {
+  const { y, m } = parse(s);
+  const out = new Set<string>();
+  for (let k = -2; k <= 2; k++) {
+    const t = addMonths(y, m, k);
+    for (const dd of cycle.days) out.add(shiftWeekend(ymd(t.y, t.m, clampDay(t.y, t.m, dd)), cycle.rule));
+  }
+  return [...out].sort();
+}
+
+export function periodFor(mode: Mode, s: string, cycle?: Cycle): Period {
+  if (mode === 'quincena' && cycle && cycle.days.length > 0) {
+    const days = paydays(cycle, s);
+    let start = days[0];
+    for (const d of days) if (d <= s) start = d;
+    const next = days.find((d) => d > s) ?? addDays(start, 15);
+    const end = addDays(next, -1);
+    return { mode, start, end, label: `Quincena del ${formatDay(start)} al ${formatDay(end)}`, sub: `Cobras el ${formatDay(start)} · próxima paga el ${formatDay(next)}` };
+  }
   const { y, m, d } = parse(s);
   const dim = daysInMonth(y, m);
   if (mode === 'mes') {
@@ -83,7 +119,10 @@ export function periodFor(mode: Mode, s: string): Period {
   return { mode, start, end, label: 'Semana', sub: `${formatDay(start)} – ${formatDay(end)} ${parse(end).y}` };
 }
 
-export function shiftPeriod(p: Period, dir: 1 | -1): Period {
+export function shiftPeriod(p: Period, dir: 1 | -1, cycle?: Cycle): Period {
+  if (p.mode === 'quincena' && cycle && cycle.days.length > 0) {
+    return periodFor('quincena', dir > 0 ? addDays(p.end, 1) : addDays(p.start, -1), cycle);
+  }
   const { y, m, d } = parse(p.start);
   if (p.mode === 'mes') {
     const n = addMonths(y, m, dir);

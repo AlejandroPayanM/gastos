@@ -47,6 +47,8 @@ export interface Fixed {
   weekday?: number;
   /** Regla de fin de semana (por defecto: quincenal → viernes, mensual → igual) */
   weekend?: WeekendRule;
+  /** Solo ingresos quincenales: si define tu quincena "de paga a paga" (por defecto sí) */
+  cycle?: boolean;
   accountId?: string;
   category?: string;
   /** No se generan ocurrencias antes de esta fecha */

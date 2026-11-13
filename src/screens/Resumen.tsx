@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { AdjustSheet, type AdjustTarget } from '../adjust';
 import { formatDay, todayStr } from '../dates';
-import { cashNow, summarize } from '../finance';
-import { money, round2 } from '../money';
+import { summarize, todayView } from '../finance';
+import { money } from '../money';
 import { useStore } from '../store';
 import { C } from '../theme';
 import type { Period } from '../types';
-import { Card, Empty, Row, SectionTitle } from '../ui';
+import { Card, Empty, Row, SectionTitle, Segmented } from '../ui';
 
 function Line({ label, value, color, bold, note }: { label: string; value: string; color?: string; bold?: boolean; note?: string }) {
   return (
@@ -36,11 +36,13 @@ export function Resumen({ period }: { period: Period }) {
   const today = todayStr();
   const neg = s.disponible < 0;
 
-  // "Hoy": lo que realmente hay en cuentas menos lo que falta por pagar en este periodo,
-  // sin contar ingresos que todavía no marcas como recibidos.
+  // "Hoy": lo que realmente hay en cuentas menos lo que falta por pagar (fijos del periodo y tarjetas
+  // que vencen este mes), sin contar ingresos que todavía no marcas como recibidos.
   const isCurrent = today >= period.start && today <= period.end;
-  const cash = cashNow(db, today);
-  const availToday = round2(cash - s.pendiente);
+  const tv = todayView(db, period, today);
+  const [view, setView] = useState<'hoy' | 'proyectado'>('hoy');
+  const showToday = isCurrent && view === 'hoy';
+  const cardList = showToday ? tv.tarjetas : s.pagos;
 
   const fixedList = s.occs.filter((o) => !o.onCard);
   const maxCat = Math.max(1, ...s.byCategory.map((c) => c.total));
@@ -49,29 +51,35 @@ export function Resumen({ period }: { period: Period }) {
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
       {isCurrent ? (
         <>
-          <Card style={{ backgroundColor: availToday < 0 ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
+          <Card style={{ backgroundColor: tv.available < 0 ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
             <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Disponible hoy</Text>
-            <Text style={{ color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 2 }}>{money(availToday)}</Text>
+            <Text style={{ color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 2 }}>{money(tv.available)}</Text>
             <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13 }}>
-              En cuentas {money(cash)} − por pagar en este periodo {money(s.pendiente)}
+              En cuentas {money(tv.cash)} − por pagar {money(tv.fijosTotal + tv.tarjetasTotal)}
             </Text>
-            {s.entradasPorRecibir > 0 ? (
+            {tv.available < 0 && tv.porRecibirTotal > 0 ? (
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', marginTop: 6 }}>
+                Con tus ingresos por recibir ({money(tv.porRecibirTotal)}) quedarían {money(tv.withIncome)}.
+              </Text>
+            ) : tv.porRecibirTotal > 0 ? (
               <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 6 }}>
-                No cuenta {money(s.entradasPorRecibir)} de ingresos que aún no marcas como recibidos.
+                No cuenta {money(tv.porRecibirTotal)} de ingresos que aún no marcas como recibidos.
               </Text>
             ) : null}
-            {cash === 0 ? (
+            {tv.cash === 0 ? (
               <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 6 }}>Pon tu saldo real en Cuentas para que esto sea exacto.</Text>
             ) : null}
           </Card>
-          <Card>
-            <Text style={{ color: C.muted, fontSize: 13, fontWeight: '600' }}>Proyectado al cierre del periodo</Text>
-            <Text style={{ color: neg ? C.danger : C.text, fontSize: 24, fontWeight: '800' }}>{money(s.disponible)}</Text>
-            <Text style={{ color: C.muted, fontSize: 12 }}>
-              Entradas {money(s.entradas)} − salidas {money(s.salidas)}
-              {s.entradasPorRecibir > 0 ? ` · incluye ${money(s.entradasPorRecibir)} por recibir` : ''}
-            </Text>
-          </Card>
+          <View style={{ marginBottom: 12 }}>
+            <Segmented
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'hoy', label: 'Con lo que tengo hoy' },
+                { value: 'proyectado', label: 'Proyectado' },
+              ]}
+            />
+          </View>
         </>
       ) : (
         <Card style={{ backgroundColor: neg ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
@@ -86,7 +94,29 @@ export function Resumen({ period }: { period: Period }) {
         </Card>
       )}
 
-      <SectionTitle>Desglose</SectionTitle>
+      <SectionTitle>{showToday ? 'Con lo que tengo hoy' : 'Desglose'}</SectionTitle>
+      {showToday ? (
+        <Card>
+          <Line label="En cuentas hoy" value={money(tv.cash)} bold note="saldo real de débito y efectivo" />
+          <Line
+            label="Pagos fijos pendientes"
+            value={money(-tv.fijosTotal)}
+            color={C.gasto}
+            note={tv.fijos.length ? `${tv.fijos.length} por pagar en ${period.mode === 'mes' ? 'el mes' : 'este periodo'}` : 'nada pendiente'}
+          />
+          <Line
+            label={tv.throughMonth ? 'Tarjetas por pagar este mes' : 'Tarjetas por pagar en este periodo'}
+            value={money(-tv.tarjetasTotal)}
+            color={C.tarjeta}
+            note={tv.tarjetas.length ? 'lo que hay que apartar para sus fechas límite' : tv.throughMonth ? 'ninguna pendiente este mes' : 'ninguna vence en este periodo'}
+          />
+          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
+          <Line label="Disponible hoy" value={money(tv.available)} bold color={tv.available < 0 ? C.danger : C.text} />
+          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
+          <Line label="Ingresos por recibir" value={money(tv.porRecibirTotal, { sign: true })} color={C.ingreso} note="no cuentan hasta que los marques como recibidos" />
+          <Line label="Si llegan todos" value={money(tv.withIncome)} bold color={tv.withIncome < 0 ? C.danger : C.text} />
+        </Card>
+      ) : (
       <Card>
         <Line label="Entradas" value={money(s.entradas, { sign: true })} color={C.ingreso} note={s.entradasFijas ? `incluye ${money(s.entradasFijas)} de ingresos fijos` : undefined} />
         <Line label="Salidas (débito / efectivo)" value={money(-s.gastos)} color={C.gasto} />
@@ -106,13 +136,14 @@ export function Resumen({ period }: { period: Period }) {
           </Text>
         ) : null}
       </Card>
+      )}
 
-      <SectionTitle>Pagos de tarjeta</SectionTitle>
+      <SectionTitle>{showToday ? (tv.throughMonth ? 'Apartar para tarjetas (vencen este mes)' : 'Apartar para tarjetas (vencen en este periodo)') : 'Pagos de tarjeta'}</SectionTitle>
       <Card>
-        {s.pagos.length === 0 ? (
-          <Empty>Ninguna tarjeta vence en este periodo.</Empty>
+        {cardList.length === 0 ? (
+          <Empty>{showToday ? 'No tienes pagos de tarjeta pendientes en este periodo.' : 'Ninguna tarjeta vence en este periodo.'}</Empty>
         ) : (
-          s.pagos.map((p) => (
+          cardList.map((p) => (
             <Row
               key={p.key}
               onPress={() =>

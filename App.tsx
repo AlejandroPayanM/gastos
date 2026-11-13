@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { periodFor, shiftPeriod, todayStr } from './src/dates';
+import { cycleOf } from './src/finance';
 import { TxForm } from './src/forms';
 import { Cuentas } from './src/screens/Cuentas';
 import { Estimacion } from './src/screens/Estimacion';
@@ -30,11 +31,15 @@ const TABS: { key: Tab; icon: string; label: string; title: string }[] = [
 ];
 
 function Shell() {
-  const { ready } = useStore();
+  const { db, ready } = useStore();
   const [tab, setTab] = useState<Tab>('resumen');
   const [mode, setMode] = useState<Mode>('quincena');
-  const [period, setPeriod] = useState<Period>(() => periodFor('quincena', todayStr()));
+  // Se guarda una fecha dentro del periodo (no el periodo) para que se recalcule si cambia tu sueldo fijo.
+  const [anchor, setAnchor] = useState(todayStr());
   const [adding, setAdding] = useState(false);
+  const cycle = cycleOf(db);
+  const period: Period = periodFor(mode, anchor, cycle);
+  const goTo = (dir: 1 | -1) => setAnchor(shiftPeriod(period, dir, cycle).start);
 
   useEffect(() => {
     // En la versión web pide al navegador que no borre los datos guardados.
@@ -47,7 +52,7 @@ function Shell() {
 
   const changeMode = (m: Mode) => {
     setMode(m);
-    setPeriod(periodFor(m, todayStr()));
+    setAnchor(todayStr());
   };
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
@@ -72,14 +77,14 @@ function Shell() {
                 ]}
               />
               <View style={st.nav}>
-                <Pressable style={st.arrow} onPress={() => setPeriod((p) => shiftPeriod(p, -1))} hitSlop={8}>
+                <Pressable style={st.arrow} onPress={() => goTo(-1)} hitSlop={8}>
                   <Text style={st.arrowText}>‹</Text>
                 </Pressable>
-                <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setPeriod(periodFor(mode, todayStr()))}>
+                <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={() => setAnchor(todayStr())}>
                   <Text style={st.periodLabel}>{period.label}</Text>
                   <Text style={st.periodSub}>{period.sub}</Text>
                 </Pressable>
-                <Pressable style={st.arrow} onPress={() => setPeriod((p) => shiftPeriod(p, 1))} hitSlop={8}>
+                <Pressable style={st.arrow} onPress={() => goTo(1)} hitSlop={8}>
                   <Text style={st.arrowText}>›</Text>
                 </Pressable>
               </View>

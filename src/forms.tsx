@@ -151,6 +151,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
   const [d2, setD2] = useState('30');
   const [weekday, setWeekday] = useState('0');
   const [weekend, setWeekend] = useState<WeekendRule>('igual');
+  const [defines, setDefines] = useState(true);
   const [accountId, setAccountId] = useState<string | undefined>();
   const [startDate, setStartDate] = useState(todayStr());
   const [error, setError] = useState('');
@@ -165,6 +166,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
     setError('');
     if (initial) {
       setWeekend(weekendRule(initial));
+      setDefines(initial.cycle !== false);
       setKind(initial.kind);
       setName(initial.name);
       setAmount(String(initial.amount));
@@ -185,6 +187,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       setD2('30');
       setWeekday('0');
       setWeekend('igual');
+      setDefines(true);
       setAccountId(db.accounts.find((a) => a.kind !== 'credito')?.id);
       setStartDate(todayStr());
     }
@@ -199,8 +202,16 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
     if (freq === 'mensual' && !dayOk(day)) return setError('El día debe ser de 1 a 31');
     if (freq === 'quincenal' && !(dayOk(d1) && dayOk(d2))) return setError('Los días deben ser de 1 a 31');
     if (!isValidDate(startDate)) return setError('La fecha de inicio no es válida');
+    const id = initial?.id ?? uid();
+    const isPay = kind === 'ingreso' && freq === 'quincenal';
+    // Solo un ingreso define la quincena: si éste lo hace, los demás ingresos quincenales dejan de hacerlo.
+    if (isPay && defines) {
+      for (const o of db.fixed) {
+        if (o.id !== id && o.kind === 'ingreso' && o.freq === 'quincenal' && o.cycle !== false) saveFixed({ ...o, cycle: false });
+      }
+    }
     saveFixed({
-      id: initial?.id ?? uid(),
+      id,
       name: name.trim(),
       amount: a,
       kind,
@@ -209,6 +220,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       days: freq === 'quincenal' ? [+d1, +d2] : undefined,
       weekday: freq === 'semanal' ? +weekday : undefined,
       weekend: freq === 'semanal' ? undefined : weekend,
+      cycle: isPay ? defines : undefined,
       accountId,
       startDate,
     });
@@ -297,6 +309,22 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
               { value: 'igual', label: 'Dejarlo igual' },
             ]}
           />
+        </View>
+      ) : null}
+      {kind === 'ingreso' && freq === 'quincenal' ? (
+        <View style={{ marginBottom: 14 }}>
+          <Label>¿Define tu quincena?</Label>
+          <Chips
+            value={defines ? 'si' : 'no'}
+            onChange={(v) => setDefines(v === 'si')}
+            options={[
+              { value: 'si', label: 'Sí, de paga a paga' },
+              { value: 'no', label: 'No' },
+            ]}
+          />
+          <Text style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+            Tu quincena empieza el día que cobras y termina el día antes de la siguiente paga (por ejemplo del 13 al 29 nov). Lo que cobras en una paga cubre esos días, incluidos los pagos de tarjeta que vencen en ellos.
+          </Text>
         </View>
       ) : null}
       {preview.length > 0 ? (

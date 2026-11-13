@@ -1,4 +1,4 @@
-import { addDays, addMonths, clampDay, inRange, monthIndex, parse, weekdayMon, ymd } from './dates';
+import { addDays, addMonths, clampDay, inRange, monthIndex, parse, periodFor, shiftWeekend, weekdayMon, ymd, type Cycle } from './dates';
 import type { Account, DB, Fixed, Period, WeekendRule } from './types';
 import { round2 } from './money';
 
@@ -41,12 +41,17 @@ export function fixedOccurrences(f: Fixed, start: string, end: string): string[]
 /** Qué hacer cuando la fecha cae en sábado o domingo. */
 export const weekendRule = (f: Pick<Fixed, 'freq' | 'weekend'>): WeekendRule => f.weekend ?? (f.freq === 'quincenal' ? 'viernes' : 'igual');
 
-/** Mueve sábado/domingo al viernes anterior o al lunes siguiente, según la regla. */
-export function shiftWeekend(date: string, rule: WeekendRule) {
-  if (rule === 'igual') return date;
-  const w = weekdayMon(date); // 0 = lunes … 5 = sábado, 6 = domingo
-  if (w < 5) return date;
-  return rule === 'viernes' ? addDays(date, -(w - 4)) : addDays(date, 7 - w);
+export { shiftWeekend };
+
+/**
+ * Cómo se parten los periodos de "quincena": de paga a paga, según tu ingreso fijo quincenal
+ * (el que marcaste como "define mi quincena" o, si no, el primero). Sin ingreso fijo quincenal
+ * se usan quincenas de calendario (1–15 y 16–fin).
+ */
+export function cycleOf(db: DB): Cycle | undefined {
+  const cands = db.fixed.filter((f) => f.kind === 'ingreso' && f.freq === 'quincenal');
+  const f = cands.find((x) => x.cycle === true) ?? cands.find((x) => x.cycle !== false);
+  return f ? { days: f.days ?? [15, 30], rule: weekendRule(f) } : undefined;
 }
 
 export const fixedKey = (f: Fixed, date: string) => `${f.id}|${date}`;
@@ -285,9 +290,12 @@ export function summarize(db: DB, p: Period): Summary {
 
 /** Saldo de una cuenta de débito / efectivo hasta `today` (incluido). */
 export function accountBalance(db: DB, a: Account, today: string) {
+  // Lo que no tiene cuenta asignada se toma de la primera cuenta de débito/efectivo.
+  const defaultId = db.accounts.find((x) => !isCard(x))?.id;
+  const mine = (id?: string) => (id ?? defaultId) === a.id;
   let bal = a.initialBalance ?? 0;
   for (const t of db.txs) {
-    if (t.accountId !== a.id || t.date > today) continue;
+    if (!mine(t.accountId) || t.date > today) continue;
     bal += t.type === 'ingreso' ? t.amount : -t.amount;
   }
   // Lo que marcaste como pagado/recibido ya movió el dinero, aunque su fecha sea posterior a hoy.
@@ -295,13 +303,59 @@ export function accountBalance(db: DB, a: Account, today: string) {
     const [id] = key.split('|');
     if (id.startsWith('card:')) {
       const card = findAccount(db, id.slice(5));
-      if (card?.payFromId === a.id) bal -= amount;
+      if (card && mine(card.payFromId)) bal -= amount;
     } else {
       const f = db.fixed.find((x) => x.id === id);
-      if (f?.accountId === a.id) bal += f.kind === 'ingreso' ? amount : -amount;
+      if (f && mine(f.accountId)) bal += f.kind === 'ingreso' ? amount : -amount;
     }
   }
   return round2(bal);
+}
+
+/* ------------------------------------------------------------------ */
+/* Vista "con lo que tengo hoy"                                        */
+/* ------------------------------------------------------------------ */
+
+export interface TodayView {
+  /** Dinero real en cuentas de débito/efectivo hoy */
+  cash: number;
+  /** Pagos fijos del periodo que aún no marcas como pagados */
+  fijos: FixedOcc[];
+  fijosTotal: number;
+  /** Pagos de tarjeta sin pagar que vencen desde el inicio del periodo hasta el fin de su mes */
+  tarjetas: CardPayment[];
+  tarjetasTotal: number;
+  /** cash − fijos − tarjetas: lo que queda sin contar ingresos que no han llegado */
+  available: number;
+  /** Ingresos fijos del periodo que aún no marcas como recibidos */
+  porRecibir: FixedOcc[];
+  porRecibirTotal: number;
+  /** available + porRecibirTotal */
+  withIncome: number;
+  /** True si los pagos de tarjeta se cuentan hasta fin de mes (quincenas de calendario) */
+  throughMonth: boolean;
+}
+
+/**
+ * Lo que existe hoy en tus cuentas frente a lo que hay que pagar. Como normalmente la 1ª quincena
+ * se reserva para las tarjetas (que vencen el 16/17), los pagos de tarjeta cuentan hasta el fin del mes
+ * aunque caigan en la quincena siguiente.
+ */
+export function todayView(db: DB, p: Period, today: string): TodayView {
+  const cash = cashNow(db, today);
+  const monthEnd = periodFor('mes', p.end).end;
+  // Con quincena de paga a paga, el pago de tarjeta del 16/17 ya cae en la quincena que empieza el 13.
+  // Con quincenas de calendario se aparta hasta fin de mes para no perder los pagos del 16/17.
+  const throughMonth = !(p.mode === 'quincena' && cycleOf(db)) && p.mode !== 'mes';
+  const occs = fixedOccs(db, p.start, p.end).filter((o) => !o.paid);
+  const fijos = occs.filter((o) => o.fixed.kind === 'gasto' && !o.onCard);
+  const porRecibir = occs.filter((o) => o.fixed.kind === 'ingreso');
+  const tarjetas = cardPayments(db, p.start, throughMonth ? monthEnd : p.end).filter((c) => !c.paid);
+  const fijosTotal = round2(fijos.reduce((s, o) => s + o.amount, 0));
+  const tarjetasTotal = round2(tarjetas.reduce((s, c) => s + c.amount, 0));
+  const porRecibirTotal = round2(porRecibir.reduce((s, o) => s + o.amount, 0));
+  const available = round2(cash - fijosTotal - tarjetasTotal);
+  return { cash, fijos, fijosTotal, tarjetas, tarjetasTotal, available, porRecibir, porRecibirTotal, withIncome: round2(available + porRecibirTotal), throughMonth };
 }
 
 /** Dinero que realmente hay hoy en cuentas de débito y efectivo. */

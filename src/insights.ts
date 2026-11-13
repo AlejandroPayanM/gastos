@@ -1,5 +1,5 @@
 import { inRange, parse, periodFor, shiftPeriod } from './dates';
-import { accountBalance, cardPayments, findAccount, fixedOccs, isCard } from './finance';
+import { accountBalance, cardPayments, cycleOf, findAccount, fixedOccs, isCard } from './finance';
 import { round2 } from './money';
 import type { DB, Mode, Period, TxType } from './types';
 
@@ -178,7 +178,8 @@ const SCALE: Record<Mode, number> = { quincena: 1, mes: 2, semana: 7 / 15 };
 
 export function projection(db: DB, mode: Mode, today: string, count: number): Projection {
   const startBalance = round2(db.accounts.filter((a) => !isCard(a)).reduce((s, a) => s + accountBalance(db, a, today), 0));
-  const cur = periodFor(mode, today);
+  const cycle = cycleOf(db);
+  const cur = periodFor(mode, today, cycle);
 
   // Promedio de gasto variable en los últimos periodos completos con datos
   const dates = db.txs.map((t) => t.date).sort();
@@ -186,7 +187,7 @@ export function projection(db: DB, mode: Mode, today: string, count: number): Pr
   const samples: number[] = [];
   let back = cur;
   for (let i = 0; i < 3; i++) {
-    back = shiftPeriod(back, -1);
+    back = shiftPeriod(back, -1, cycle);
     if (earliest && earliest <= back.start) samples.push(variableSpent(db, back.start, back.end));
   }
   const variableAuto = samples.length ? round2(samples.reduce((s, x) => s + x, 0) / samples.length) : 0;
@@ -248,7 +249,7 @@ export function projection(db: DB, mode: Mode, today: string, count: number): Pr
       items: items.sort((a, b) => a.date.localeCompare(b.date)),
     });
     balance = end;
-    p = shiftPeriod(p, 1);
+    p = shiftPeriod(p, 1, cycle);
   }
 
   const first = rows[0];

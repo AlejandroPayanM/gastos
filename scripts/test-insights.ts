@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cardPayments, cashNow, fixedOccs, summarize } from '../src/finance';
+import { cardPayments, cashNow, fixedOccs, summarize, todayView } from '../src/finance';
 import { historyRows, historyTotals, projection, toCsv } from '../src/insights';
 import { periodFor } from '../src/dates';
 import type { DB } from '../src/types';
@@ -30,20 +30,31 @@ const mk = (): DB => ({
 const today = '2026-11-12';
 
 // --- Estimación sin historial de gasto variable ---
+// El sueldo cae el 13 y el 30 → quincenas de paga a paga: 30-oct..12-nov, 13..29-nov, 30-nov..10-dic, 11..29-dic
 {
   const proj = projection(mk(), 'quincena', today, 4);
   assert.equal(proj.startBalance, 1800);
   assert.deepEqual(
-    proj.rows.map((r) => r.endBalance),
-    [9450, 13238, 20888, 24672.59],
+    proj.rows.map((r) => [r.period.start, r.period.end]),
+    [
+      ['2026-10-30', '2026-11-12'],
+      ['2026-11-13', '2026-11-29'],
+      ['2026-11-30', '2026-12-10'],
+      ['2026-12-11', '2026-12-29'],
+    ],
   );
-  assert.equal(proj.rows[1].tarjetas, 4212); // pago de tarjeta del 16-nov
+  // La 1ª incluye la paga del 30-oct que no está marcada como recibida (+9000 − 1000 de gasolina)
+  assert.deepEqual(
+    proj.rows.map((r) => r.endBalance),
+    [9800, 13238, 21238, 24672.59],
+  );
+  assert.equal(proj.rows[1].tarjetas, 4212); // pago de tarjeta del 16-nov cae en la quincena que empieza el 13
   assert.equal(proj.rows[3].tarjetas, 4215.41); // 1000 de compras + 3215.41 del taller
-  assert.equal(proj.lowest?.period.start, '2026-11-01');
+  assert.equal(proj.lowest?.period.start, '2026-10-30');
   assert.equal(proj.variable, 0);
-  assert.equal(proj.freeNow, 9450);
-  assert.equal(proj.daysLeft, 4); // 12..15 nov
-  assert.equal(proj.perDay, 2362.5);
+  assert.equal(proj.freeNow, 9800);
+  assert.equal(proj.daysLeft, 1); // hoy es el último día de la quincena
+  assert.equal(proj.perDay, 9800);
 }
 
 // --- Estimado propio de gasto variable (por quincena) ---
@@ -60,7 +71,7 @@ const today = '2026-11-12';
 // --- Promedio automático con historial completo ---
 {
   const db = mk();
-  db.txs.push({ id: 'a', type: 'gasto', amount: 600, concept: 'x', category: 'Comida', date: '2026-10-01', accountId: 'deb' }); // 1ª quincena oct (primer dato: periodo completo)
+  db.txs.push({ id: 'a', type: 'gasto', amount: 600, concept: 'x', category: 'Comida', date: '2026-09-30', accountId: 'deb' }); // quincena 30-sep..12-oct (primer dato: periodo completo)
   db.txs.push({ id: 'b', type: 'gasto', amount: 400, concept: 'y', category: 'Comida', date: '2026-10-20', accountId: 'deb' }); // 2ª quincena oct
   db.txs.push({ id: 'c', type: 'gasto', amount: 5000, concept: 'tarjeta', category: 'Ropa', date: '2026-10-21', accountId: 'nu' }); // no cuenta
   const p = projection(db, 'quincena', today, 1);
@@ -108,6 +119,7 @@ const today = '2026-11-12';
 // --- Disponible hoy: el ingreso fijo aún no recibido no cuenta ---
 {
   const db = mk();
+  db.fixed[2].cycle = false; // quincenas de calendario para este caso
   const p = periodFor('quincena', today);
   const s = summarize(db, p);
   assert.equal(cashNow(db, today), 1800);
@@ -124,6 +136,42 @@ const today = '2026-11-12';
   assert.equal(cashNow(db, today) - s2.pendiente, 9450);
   // La estimación no lo cuenta dos veces
   assert.equal(projection(db, 'quincena', today, 1).rows[0].endBalance, 10800 - 1350);
+}
+
+// --- Vista "con lo que tengo hoy": la 1ª quincena aparta lo que vence el 16 ---
+{
+  const db = mk();
+  db.fixed[2].cycle = false; // quincenas de calendario: se aparta hasta fin de mes
+  db.plans = [{ id: 'p1', accountId: 'nu', name: 'Saldo corte', monthlyAmount: 4212, months: 1, firstDue: '2026-11-16' }];
+  const q1 = periodFor('quincena', today); // 1–15 nov
+  const v = todayView(db, q1, today);
+  assert.equal(v.cash, 1800);
+  assert.equal(v.fijosTotal, 1350); // gasolina + internet del 13
+  assert.equal(v.tarjetasTotal, 4212); // vence el 16, ya cuenta aunque caiga en la 2ª quincena
+  assert.equal(v.tarjetas.length, 1);
+  assert.equal(v.available, 1800 - 1350 - 4212);
+  assert.equal(v.porRecibirTotal, 9000);
+  assert.equal(v.withIncome, 1800 - 1350 - 4212 + 9000);
+  // En vista de mes cuenta todo el mes: ambas quincenas de fijos (gasolina 13 y 30, internet 13)
+  const m = todayView(db, periodFor('mes', today), today);
+  assert.equal(m.fijosTotal, 1000 + 350 + 1000);
+  assert.equal(m.porRecibirTotal, 18000);
+  // Pagar la tarjeta antes de su fecha la quita de lo pendiente y baja el saldo (se paga desde Débito)
+  db.paid['card:nu|2026-11-16'] = 4212;
+  const paid = todayView(db, q1, today);
+  assert.equal(paid.tarjetasTotal, 0);
+  assert.equal(paid.cash, 1800 - 4212);
+}
+
+// --- Lo que no tiene cuenta asignada se toma de la primera cuenta de débito ---
+{
+  const db = mk();
+  db.accounts[1].payFromId = undefined; // la tarjeta no tiene cuenta de pago
+  db.fixed[2].accountId = undefined; // sueldo sin cuenta
+  db.txs.push({ id: 'z', type: 'gasto', amount: 100, concept: 'efectivo', category: 'Otros', date: '2026-11-11' });
+  db.paid['card:nu|2026-12-16'] = 1000;
+  db.paid['s|2026-11-13'] = 9000;
+  assert.equal(cashNow(db, today), 2100 - 300 - 100 - 1000 + 9000);
 }
 
 console.log('OK: insights (estimación, ajustes, historial, csv)');
