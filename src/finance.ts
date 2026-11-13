@@ -1,4 +1,4 @@
-import { addDays, addMonths, clampDay, inRange, monthIndex, parse, periodFor, shiftWeekend, weekdayMon, ymd, type Cycle } from './dates';
+import { addDays, addMonths, clampDay, daysBetween, inRange, monthIndex, parse, periodFor, shiftWeekend, weekdayMon, ymd, type Cycle } from './dates';
 import type { Account, DB, Fixed, Period, WeekendRule } from './types';
 import { round2 } from './money';
 
@@ -13,6 +13,15 @@ export function fixedOccurrences(f: Fixed, start: string, end: string): string[]
   const out: string[] = [];
   const lo = f.startDate && f.startDate > start ? f.startDate : start;
   if (lo > end) return out;
+
+  if (f.freq === 'bisemanal') {
+    // Cada 14 días contados desde la primera fecha (startDate), p. ej. un viernes sí y otro no.
+    const anchor = f.startDate;
+    if (!anchor) return out;
+    const k = Math.max(0, Math.ceil(daysBetween(anchor, lo) / 14));
+    for (let d = addDays(anchor, 14 * k); d <= end; d = addDays(d, 14)) out.push(d);
+    return out;
+  }
 
   if (f.freq === 'semanal') {
     for (let d = lo; d <= end; d = addDays(d, 1)) if (weekdayMon(d) === (f.weekday ?? 0)) out.push(d);

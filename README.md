@@ -23,6 +23,10 @@ npm test              # pruebas de la lógica (periodos, recurrencia, cortes)
 
 Los pagos e ingresos fijos mensuales y quincenales pueden moverse solos cuando su fecha cae en sábado o domingo: adelantar al viernes (por defecto en los quincenales, como el sueldo del 15 y del 30/31), pasar al lunes, o dejarlo igual. El formulario muestra las próximas fechas ya ajustadas. No considera días festivos.
 
+## Cada 2 semanas
+
+Un pago fijo puede repetirse **cada 14 días** (por ejemplo, un viernes sí y otro no) con la frecuencia "Cada 2 sem.": eliges la fecha exacta del primer pago y los demás caen cada 2 semanas desde ahí, aunque algunos meses tengan 3. Si un viernes no se hace el pago, se ajusta solo ese periodo desde el Resumen.
+
 ## Quincena de paga a paga
 
 Si tienes un ingreso fijo quincenal (tu sueldo), la "quincena" de la app va de una paga a la siguiente: empieza el día que cobras y termina el día antes del siguiente cobro (por ejemplo del 30 oct al 12 nov y del 13 al 29 nov). Así lo que cobras el 13 cubre también los pagos de tarjeta que vencen el 16/17. Sin ingreso fijo quincenal se usan quincenas de calendario (1–15 y 16–fin). Mes y semana siguen siendo de calendario. En el ingreso fijo puedes elegir si define o no tu quincena.

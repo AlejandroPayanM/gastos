@@ -1,6 +1,7 @@
 export type TxType = 'ingreso' | 'gasto' | 'imprevisto';
 export type AccountKind = 'debito' | 'efectivo' | 'credito';
-export type Freq = 'mensual' | 'quincenal' | 'semanal';
+/** bisemanal = cada 14 días contando desde `startDate` (que es la primera fecha). */
+export type Freq = 'mensual' | 'quincenal' | 'semanal' | 'bisemanal';
 
 export interface Account {
   id: string;

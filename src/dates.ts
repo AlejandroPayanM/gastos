@@ -35,6 +35,13 @@ export function addMonths(y: number, m: number, n: number) {
   return { y: y + Math.floor(t / 12), m: (((t % 12) + 12) % 12) + 1 };
 }
 
+/** Días que hay de `a` a `b` (negativo si `b` es anterior). */
+export function daysBetween(a: string, b: string) {
+  const pa = parse(a);
+  const pb = parse(b);
+  return Math.round((Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86400000);
+}
+
 /** 0 = lunes … 6 = domingo */
 export function weekdayMon(s: string) {
   const { y, m, d } = parse(s);

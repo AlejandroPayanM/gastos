@@ -27,7 +27,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx scripts/test-logic.ts && tsx scripts/test-insights.ts && tsx scripts/test-weekend.ts && tsx scripts/test-cycle.ts && tsx scripts/test-sync.ts",
+    "test": "tsx scripts/test-logic.ts && tsx scripts/test-insights.ts && tsx scripts/test-weekend.ts && tsx scripts/test-cycle.ts && tsx scripts/test-sync.ts && tsx scripts/test-biweekly.ts",
     "build:web": "node scripts/build-web.js"
   },
   "private": true

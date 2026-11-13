@@ -1,4 +1,4 @@
-import { inRange, parse, periodFor, shiftPeriod } from './dates';
+import { daysBetween, inRange, periodFor, shiftPeriod } from './dates';
 import { accountBalance, cardPayments, cycleOf, findAccount, fixedOccs, isCard } from './finance';
 import { round2 } from './money';
 import type { DB, Mode, Period, TxType } from './types';
@@ -119,11 +119,6 @@ export function toCsv(rows: HistRow[]) {
 /* Estimación                                                          */
 /* ------------------------------------------------------------------ */
 
-export const daysBetween = (a: string, b: string) => {
-  const pa = parse(a);
-  const pb = parse(b);
-  return Math.round((Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86400000);
-};
 
 /** Gasto que no es fijo ni de tarjeta (lo que sale de débito/efectivo) entre dos fechas. */
 function variableSpent(db: DB, from: string, to: string) {

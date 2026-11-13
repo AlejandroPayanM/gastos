@@ -129,7 +129,7 @@ export function DateField({ label, value, onChange }: { label: string; value: st
           onChangeText={onChange}
           placeholder="AAAA-MM-DD"
           placeholderTextColor="#9AA7A3"
-          style={[s.input, { flex: 1, textAlign: 'center' }, !valid && { borderColor: C.danger }]}
+          style={[s.input, { flex: 1, minWidth: 0, textAlign: 'center' }, !valid && { borderColor: C.danger }]}
         />
         <Pressable style={s.step} onPress={() => valid && onChange(addDays(value, 1))}>
           <Text style={s.stepText}>›</Text>

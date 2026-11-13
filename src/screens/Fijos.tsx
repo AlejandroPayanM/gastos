@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, Text } from 'react-native';
-import { DIAS_SEMANA } from '../dates';
+import { DIAS_SEMANA, formatDay, weekdayMon } from '../dates';
 import { findAccount, weekendRule } from '../finance';
 import { FixedForm } from '../forms';
 import { money } from '../money';
@@ -11,6 +11,7 @@ import { Button, Card, Empty, Row, SectionTitle } from '../ui';
 
 function when(f: Fixed) {
   if (f.freq === 'semanal') return `Cada ${DIAS_SEMANA[f.weekday ?? 0].toLowerCase()}`;
+  if (f.freq === 'bisemanal') return `Cada 2 semanas (${DIAS_SEMANA[weekdayMon(f.startDate)].toLowerCase()}, desde el ${formatDay(f.startDate)})`;
   const rule = weekendRule(f);
   const weekend = rule === 'viernes' ? ' · fin de semana → viernes' : rule === 'lunes' ? ' · fin de semana → lunes' : '';
   if (f.freq === 'mensual') return `Cada mes, día ${f.day}${weekend}`;

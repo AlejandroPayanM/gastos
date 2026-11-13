@@ -219,7 +219,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       day: freq === 'mensual' ? +day : undefined,
       days: freq === 'quincenal' ? [+d1, +d2] : undefined,
       weekday: freq === 'semanal' ? +weekday : undefined,
-      weekend: freq === 'semanal' ? undefined : weekend,
+      weekend: freq === 'mensual' || freq === 'quincenal' ? weekend : undefined,
       cycle: isPay ? defines : undefined,
       accountId,
       startDate,
@@ -228,7 +228,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
   };
 
   // Vista previa de las próximas fechas con la regla elegida
-  const previewOk = freq === 'semanal' || (freq === 'mensual' ? dayOk(day) : dayOk(d1) && dayOk(d2));
+  const previewOk = freq === 'semanal' || freq === 'bisemanal' || (freq === 'mensual' ? dayOk(day) : dayOk(d1) && dayOk(d2));
   const preview = previewOk
     ? fixedOccurrences(
         {
@@ -278,7 +278,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       <Field label="Monto" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
       <View style={{ marginBottom: 14 }}>
         <Label>Frecuencia</Label>
-        <Segmented value={freq} onChange={changeFreq} options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }]} />
+        <Segmented value={freq} onChange={changeFreq} options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'bisemanal', label: 'Cada 2 sem.' }]} />
       </View>
       {freq === 'mensual' ? <Field label="Día del mes" value={day} onChangeText={setDay} keyboardType="number-pad" hint="Si el mes es más corto se usa el último día." /> : null}
       {freq === 'quincenal' ? (
@@ -297,7 +297,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
           <Chips value={weekday} onChange={setWeekday} options={DIAS_SEMANA.map((d, i) => ({ value: String(i), label: d }))} />
         </View>
       ) : null}
-      {freq !== 'semanal' ? (
+      {freq === 'mensual' || freq === 'quincenal' ? (
         <View style={{ marginBottom: 14 }}>
           <Label>Si cae en sábado o domingo</Label>
           <Chips
@@ -334,7 +334,12 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
         <Label>{kind === 'ingreso' ? 'Entra a la cuenta' : 'Se paga con'}</Label>
         <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} none="Sin cuenta" />
       </View>
-      <DateField label="Empieza el" value={startDate} onChange={setStartDate} />
+      <DateField label={freq === 'bisemanal' ? 'Primer pago (después se repite cada 14 días)' : 'Empieza el'} value={startDate} onChange={setStartDate} />
+      {freq === 'bisemanal' ? (
+        <Text style={{ fontSize: 12, color: C.muted, marginTop: -8, marginBottom: 14 }}>
+          Elige la fecha exacta de uno de tus pagos (por ejemplo, el viernes que toca). Los demás caen cada 2 semanas desde ahí, aunque haya meses con 3.
+        </Text>
+      ) : null}
       {error ? <Text style={{ color: C.danger, marginBottom: 8 }}>{error}</Text> : null}
     </Sheet>
   );
