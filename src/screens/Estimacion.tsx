@@ -13,7 +13,7 @@ const UNIT: Record<Mode, string> = { quincena: 'quincena', semana: 'semana', mes
 const kindColor = { ingreso: C.ingreso, fijo: C.gasto, tarjeta: C.tarjeta, programado: C.imprevisto } as const;
 
 export function Estimacion() {
-  const { db, setVariableEstimate } = useStore();
+  const { db, setVariableEstimate, updateSettings } = useStore();
   const [mode, setMode] = useState<Mode>('quincena');
   const [open, setOpen] = useState<string | undefined>();
   const [draft, setDraft] = useState('');
@@ -24,6 +24,14 @@ export function Estimacion() {
   const hasData = db.fixed.length > 0 || db.txs.length > 0 || db.plans.length > 0;
   const negative = proj.lowest && proj.lowest.endBalance < 0 ? proj.lowest : undefined;
   const cur = proj.rows[0];
+
+  const keep = db.settings?.keepPeriods ?? [];
+  const toggleKeep = (row: ProjRow) => {
+    const keys = row.boundaries.filter((b) => b.amount > 0).map((b) => b.key);
+    const allKept = keys.every((k) => keep.includes(k));
+    const next = allKept ? keep.filter((k) => !keys.includes(k)) : [...new Set([...keep, ...keys])];
+    updateSettings({ keepPeriods: next });
+  };
 
   const saveEstimate = () => {
     const n = parseAmount(draft);
@@ -62,6 +70,11 @@ export function Estimacion() {
         {cur ? (
           <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 6 }}>
             Al cerrar esta {UNIT[mode]} te quedarían <Text style={{ fontWeight: '800' }}>{money(cur.endBalance)}</Text>
+          </Text>
+        ) : null}
+        {cur && cur.dropped > 0 ? (
+          <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4 }}>
+            No cuento {money(cur.dropped)} de sobrante de quincenas anteriores: se asume que se gasta en el día a día.
           </Text>
         ) : null}
         {negative ? (
@@ -122,10 +135,36 @@ export function Estimacion() {
         )}
       </Card>
 
+      {/* Sobrante */}
+      <SectionTitle>Sobrante entre quincenas</SectionTitle>
+      <Card>
+        <Segmented
+          value={proj.carryOver ? 'si' : 'no'}
+          onChange={(v) => updateSettings({ carryOver: v === 'si' })}
+          options={[
+            { value: 'no', label: 'No arrastrar' },
+            { value: 'si', label: 'Arrastrar todo' },
+          ]}
+        />
+        <Text style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
+          {proj.carryOver
+            ? 'Lo que sobra de cada quincena se suma a la siguiente.'
+            : 'Lo que sobra de cada quincena se asume gastado en el día a día y no se suma a la siguiente (un faltante sí se arrastra). En los periodos donde sí vas a guardar, como diciembre, ábrelos y actívalo ahí.'}
+        </Text>
+      </Card>
+
       {/* Periodos */}
       <SectionTitle>Próximos periodos</SectionTitle>
       {proj.rows.map((r) => (
-        <PeriodCard key={r.period.start} row={r} open={open === r.period.start} onToggle={() => setOpen(open === r.period.start ? undefined : r.period.start)} />
+        <PeriodCard
+          key={r.period.start}
+          row={r}
+          open={open === r.period.start}
+          onToggle={() => setOpen(open === r.period.start ? undefined : r.period.start)}
+          canKeep={!proj.carryOver}
+          keep={keep}
+          onKeep={() => toggleKeep(r)}
+        />
       ))}
       <Text style={{ color: C.muted, fontSize: 12 }}>
         Es una estimación: parte de tu saldo de hoy y suma tus ingresos fijos, resta tus pagos fijos y los pagos de tarjeta calculados por corte y fecha límite, más el gasto del día a día. Compras nuevas con tarjeta aparecerán en el pago de su estado de cuenta cuando las captures.
@@ -134,7 +173,9 @@ export function Estimacion() {
   );
 }
 
-function PeriodCard({ row, open, onToggle }: { row: ProjRow; open: boolean; onToggle: () => void }) {
+function PeriodCard({ row, open, onToggle, canKeep, keep, onKeep }: { row: ProjRow; open: boolean; onToggle: () => void; canKeep: boolean; keep: string[]; onKeep: () => void }) {
+  const leftovers = row.boundaries.filter((b) => b.amount > 0);
+  const keeping = leftovers.length > 0 && leftovers.every((b) => keep.includes(b.key));
   const neg = row.endBalance < 0;
   return (
     <Card style={{ paddingVertical: 4 }}>
@@ -148,8 +189,18 @@ function PeriodCard({ row, open, onToggle }: { row: ProjRow; open: boolean; onTo
             <Text style={{ fontSize: 12, color: C.muted }}>{row.period.sub}</Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 11, color: C.muted }}>Saldo al cierre</Text>
-            <Text style={{ fontSize: 17, fontWeight: '800', color: neg ? C.danger : C.text }}>{money(row.endBalance)}</Text>
+            {row.dropped > 0 && row.endBalance === 0 ? (
+              <>
+                <Text style={{ fontSize: 11, color: C.muted }}>Te sobra (no se arrastra)</Text>
+                <Text style={{ fontSize: 17, fontWeight: '800', color: C.text }}>{money(row.dropped)}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 11, color: C.muted }}>Saldo al cierre</Text>
+                <Text style={{ fontSize: 17, fontWeight: '800', color: neg ? C.danger : C.text }}>{money(row.endBalance)}</Text>
+                {row.dropped > 0 ? <Text style={{ fontSize: 11, color: C.muted }}>sin {money(row.dropped)} de sobrante</Text> : null}
+              </>
+            )}
           </View>
         </View>
         <Text style={{ fontSize: 12, color: C.primary, marginTop: 4 }}>{open ? 'Ocultar detalle ▲' : 'Ver detalle ▼'}</Text>
@@ -162,6 +213,14 @@ function PeriodCard({ row, open, onToggle }: { row: ProjRow; open: boolean; onTo
           <Line label="− Pagos de tarjeta" value={money(-row.tarjetas)} color={C.tarjeta} />
           {row.programados !== 0 ? <Line label="± Movimientos programados" value={money(row.programados)} color={C.imprevisto} /> : null}
           <Line label={row.isCurrent ? '− Gasto del día a día que falta' : '− Gasto del día a día (estimado)'} value={money(-row.variable)} />
+          {row.dropped > 0 ? <Line label="− Sobrante que no se arrastra" value={money(-row.dropped)} /> : null}
+          {canKeep && leftovers.length > 0 ? (
+            <Pressable onPress={onKeep} style={{ marginTop: 6, paddingVertical: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.primary }}>
+                {keeping ? '✓ Guardando el sobrante de este periodo (toca para quitar)' : 'Guardar el sobrante de este periodo'}
+              </Text>
+            </Pressable>
+          ) : null}
           {row.items.length > 0 ? (
             <View style={{ marginTop: 8 }}>
               {row.items.map((it, i) => (

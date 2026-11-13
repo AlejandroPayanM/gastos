@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { cardPayments, cashNow, fixedOccs, summarize, todayView } from '../src/finance';
 import { historyRows, historyTotals, projection, toCsv } from '../src/insights';
 import { periodFor } from '../src/dates';
+const round = (n: number) => Math.round(n * 100) / 100;
 import type { DB } from '../src/types';
 
 const mk = (): DB => ({
@@ -24,10 +25,41 @@ const mk = (): DB => ({
   ],
   paid: {},
   overrides: {},
-  settings: {},
+  settings: { carryOver: true }, // las pruebas de abajo suponen que el sobrante pasa a la siguiente quincena
 });
 
 const today = '2026-11-12';
+
+// --- Sobrante que no se arrastra (por defecto) ---
+{
+  const db = mk();
+  db.settings = {};
+  // Mismas quincenas: el sobrante de cada una se asume gastado, solo queda lo que entra en la siguiente
+  const q = projection(db, 'quincena', today, 4);
+  assert.equal(q.carryOver, false);
+  assert.deepEqual(q.rows.map((r) => r.startBalance), [1800, 0, 0, 0]);
+  assert.deepEqual(q.rows.map((r) => r.endBalance), [0, 0, 0, 0]);
+  assert.deepEqual(q.rows.map((r) => r.dropped), [9800, 13238 - 9800, 21238 - 13238, 24672.59 - 21238]);
+  // En vista mensual el cierre de noviembre ya no suma el sobrante de la 1ª quincena a la paga del 30
+  const m = projection(db, 'mes', today, 2);
+  const conArrastre = projection(mk(), 'mes', today, 2);
+  assert.equal(m.rows[0].dropped, 13238); // sobrantes de las quincenas 30-oct y 13-nov
+  assert.equal(m.rows[0].endBalance, round(conArrastre.rows[0].endBalance - 13238)); // solo queda lo que entra el 30
+  assert.equal(m.rows[1].startBalance, m.rows[0].endBalance);
+  // Guardar el sobrante de una quincena concreta (p. ej. diciembre) sí lo suma
+  const db2 = mk();
+  db2.settings = { keepPeriods: ['2026-11-13'] };
+  const k = projection(db2, 'quincena', today, 3);
+  assert.deepEqual(k.rows.map((r) => r.endBalance), [0, 13238 - 9800, 0]);
+  assert.equal(k.rows[2].startBalance, 13238 - 9800);
+  // Un faltante (negativo) no se descarta
+  const db3 = mk();
+  db3.settings = {};
+  db3.fixed[2].amount = 100; // sueldo muy bajo
+  const n = projection(db3, 'quincena', today, 3);
+  assert.ok(n.rows[1].endBalance < 0);
+  assert.equal(n.rows[2].startBalance, n.rows[1].endBalance);
+}
 
 // --- Estimación sin historial de gasto variable ---
 // El sueldo cae el 13 y el 30 → quincenas de paga a paga: 30-oct..12-nov, 13..29-nov, 30-nov..10-dic, 11..29-dic

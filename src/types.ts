@@ -81,7 +81,13 @@ export interface DB {
   paid: Record<string, number>;
   /** clave de ocurrencia → monto ajustado solo para ese periodo */
   overrides: Record<string, number>;
-  settings: { variableEstimate?: number };
+  settings: {
+    variableEstimate?: number;
+    /** true = en la estimación el sobrante de cada quincena pasa a la siguiente. Por defecto no (se asume gastado). */
+    carryOver?: boolean;
+    /** Quincenas (fecha de inicio) cuyo sobrante sí se guarda aunque `carryOver` sea false */
+    keepPeriods?: string[];
+  };
 }
 
 export type Mode = 'quincena' | 'semana' | 'mes';

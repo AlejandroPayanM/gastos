@@ -139,6 +139,17 @@ export interface ProjItem {
   kind: 'ingreso' | 'fijo' | 'tarjeta' | 'programado';
 }
 
+/** Fin de una quincena de la estimación: lo que sobra y si se guarda o se asume gastado */
+export interface ProjBoundary {
+  /** Inicio de la quincena (clave para "guardar este sobrante") */
+  key: string;
+  /** Último día de esa quincena */
+  date: string;
+  /** Sobrante positivo al cierre de la quincena (0 si quedó justo o en negativo) */
+  amount: number;
+  kept: boolean;
+}
+
 export interface ProjRow {
   period: Period;
   isCurrent: boolean;
@@ -148,6 +159,10 @@ export interface ProjRow {
   tarjetas: number;
   programados: number;
   variable: number;
+  /** Sobrante de quincenas que cierran dentro de este periodo y que no se arrastra (se asume gastado) */
+  dropped: number;
+  /** Quincenas que cierran dentro de este periodo (para decidir si se guarda su sobrante) */
+  boundaries: ProjBoundary[];
   neto: number;
   endBalance: number;
   items: ProjItem[];
@@ -161,6 +176,8 @@ export interface Projection {
   variableAuto: number;
   variableSamples: number;
   usingOverride: boolean;
+  /** true = el sobrante pasa de una quincena a la siguiente */
+  carryOver: boolean;
   /** Periodo actual: lo que queda libre sin contar gasto variable restante, y cuánto por día */
   freeNow: number;
   daysLeft: number;
@@ -170,6 +187,46 @@ export interface Projection {
 
 /** Cuánto vale el estimado manual (que se da por quincena) en cada tipo de periodo */
 const SCALE: Record<Mode, number> = { quincena: 1, mes: 2, semana: 7 / 15 };
+
+interface Flows {
+  items: ProjItem[];
+  entradas: number;
+  fijos: number;
+  tarjetas: number;
+  programados: number;
+}
+
+/** Lo que todavía falta por entrar o salir en un periodo (lo ya marcado como pagado/recibido ya está en el saldo). */
+function flowsOf(db: DB, p: Period, today: string): Flows {
+  const items: ProjItem[] = [];
+  let entradas = 0;
+  let fijos = 0;
+  let tarjetas = 0;
+  let programados = 0;
+  for (const o of fixedOccs(db, p.start, p.end)) {
+    if (o.onCard || o.paid) continue;
+    if (o.fixed.kind === 'ingreso') {
+      entradas += o.amount;
+      items.push({ date: o.date, label: o.fixed.name, amount: o.amount, kind: 'ingreso' });
+    } else {
+      fijos += o.amount;
+      items.push({ date: o.date, label: o.fixed.name, amount: -o.amount, kind: 'fijo' });
+    }
+  }
+  for (const c of cardPayments(db, p.start, p.end)) {
+    if (c.paid) continue;
+    tarjetas += c.amount;
+    items.push({ date: c.due, label: `Tarjeta ${c.account.name}`, amount: -c.amount, kind: 'tarjeta' });
+  }
+  for (const t of db.txs) {
+    if (t.date <= today || !inRange(t.date, p.start, p.end)) continue;
+    if (isCard(findAccount(db, t.accountId))) continue;
+    const amt = t.type === 'ingreso' ? t.amount : -t.amount;
+    programados += amt;
+    items.push({ date: t.date, label: `${t.concept} (programado)`, amount: amt, kind: 'programado' });
+  }
+  return { items: items.sort((a, b) => a.date.localeCompare(b.date)), entradas, fijos, tarjetas, programados };
+}
 
 export function projection(db: DB, mode: Mode, today: string, count: number): Projection {
   const startBalance = round2(db.accounts.filter((a) => !isCard(a)).reduce((s, a) => s + accountBalance(db, a, today), 0));
@@ -189,66 +246,64 @@ export function projection(db: DB, mode: Mode, today: string, count: number): Pr
   const manual = db.settings?.variableEstimate;
   const variable = manual !== undefined ? round2(manual * SCALE[mode]) : variableAuto;
 
+  const displayPeriods: Period[] = [];
+  for (let p = cur, i = 0; i < count; i++, p = shiftPeriod(p, 1, cycle)) displayPeriods.push(p);
+  const lastEnd = displayPeriods.length ? displayPeriods[displayPeriods.length - 1].end : cur.end;
+
+  // Motor por quincena: ahí se decide si el sobrante pasa a la siguiente o se asume gastado
+  // (un sobrante negativo siempre se arrastra: el faltante no desaparece).
+  const carryOver = !!db.settings?.carryOver;
+  const keep = new Set(db.settings?.keepPeriods ?? []);
+  const variableQ = variable / SCALE[mode];
+  const boundaries: ProjBoundary[] = [];
+  {
+    let q = periodFor('quincena', today, cycle);
+    let bal = startBalance;
+    let first = true;
+    while (q.start <= lastEnd) {
+      const f = flowsOf(db, q, today);
+      const v = first ? Math.max(0, variableQ - variableSpent(db, q.start, today)) : variableQ;
+      const left = round2(bal + f.entradas - f.fijos - f.tarjetas + f.programados - v);
+      const kept = carryOver || keep.has(q.start);
+      const amount = Math.max(0, left);
+      boundaries.push({ key: q.start, date: q.end, amount, kept });
+      bal = kept ? left : Math.min(0, left);
+      first = false;
+      q = shiftPeriod(q, 1, cycle);
+    }
+  }
+
   const rows: ProjRow[] = [];
-  let p = cur;
   let balance = startBalance;
-  for (let i = 0; i < count; i++) {
+  displayPeriods.forEach((p, i) => {
     const isCurrent = i === 0;
-    // Lo ya marcado como pagado/recibido ya está en el saldo; lo demás todavía falta.
-    const ahead = (paid: boolean, _date: string) => !paid;
-    const items: ProjItem[] = [];
-    let entradas = 0;
-    let fijos = 0;
-    let tarjetas = 0;
-    let programados = 0;
-
-    for (const o of fixedOccs(db, p.start, p.end)) {
-      if (o.onCard || !ahead(o.paid, o.date)) continue;
-      const amt = o.paid ? db.paid[o.key] : o.amount;
-      if (o.fixed.kind === 'ingreso') {
-        entradas += amt;
-        items.push({ date: o.date, label: o.fixed.name, amount: amt, kind: 'ingreso' });
-      } else {
-        fijos += amt;
-        items.push({ date: o.date, label: o.fixed.name, amount: -amt, kind: 'fijo' });
-      }
-    }
-    for (const c of cardPayments(db, p.start, p.end)) {
-      if (!ahead(c.paid, c.due)) continue;
-      tarjetas += c.amount;
-      items.push({ date: c.due, label: `Tarjeta ${c.account.name}`, amount: -c.amount, kind: 'tarjeta' });
-    }
-    for (const t of db.txs) {
-      if (t.date <= today || !inRange(t.date, p.start, p.end)) continue;
-      if (isCard(findAccount(db, t.accountId))) continue;
-      const amt = t.type === 'ingreso' ? t.amount : -t.amount;
-      programados += amt;
-      items.push({ date: t.date, label: `${t.concept} (programado)`, amount: amt, kind: 'programado' });
-    }
-
+    const f = flowsOf(db, p, today);
     const spentSoFar = isCurrent ? variableSpent(db, p.start, today) : 0;
     const v = isCurrent ? Math.max(0, round2(variable - spentSoFar)) : variable;
-    const neto = round2(entradas - fijos - tarjetas + programados - v);
-    const end = round2(balance + neto);
+    const inside = boundaries.filter((b) => b.date >= p.start && b.date <= p.end && b.date >= today);
+    const dropped = round2(inside.filter((b) => !b.kept).reduce((s, b) => s + b.amount, 0));
+    const neto = round2(f.entradas - f.fijos - f.tarjetas + f.programados - v);
+    const end = round2(balance + neto - dropped);
     rows.push({
       period: p,
       isCurrent,
       startBalance: round2(balance),
-      entradas: round2(entradas),
-      fijos: round2(fijos),
-      tarjetas: round2(tarjetas),
-      programados: round2(programados),
+      entradas: round2(f.entradas),
+      fijos: round2(f.fijos),
+      tarjetas: round2(f.tarjetas),
+      programados: round2(f.programados),
       variable: v,
+      dropped,
+      boundaries: inside,
       neto,
       endBalance: end,
-      items: items.sort((a, b) => a.date.localeCompare(b.date)),
+      items: f.items,
     });
     balance = end;
-    p = shiftPeriod(p, 1, cycle);
-  }
+  });
 
   const first = rows[0];
-  const freeNow = first ? round2(first.endBalance + first.variable) : startBalance;
+  const freeNow = first ? round2(first.endBalance + first.dropped + first.variable) : startBalance;
   const daysLeft = Math.max(1, daysBetween(today, cur.end) + 1);
   const lowest = rows.reduce<ProjRow | undefined>((m, r) => (!m || r.endBalance < m.endBalance ? r : m), undefined);
   return {
@@ -258,6 +313,7 @@ export function projection(db: DB, mode: Mode, today: string, count: number): Pr
     variableAuto,
     variableSamples: samples.length,
     usingOverride: manual !== undefined,
+    carryOver,
     freeNow,
     daysLeft,
     perDay: freeNow > 0 ? round2(freeNow / daysLeft) : 0,

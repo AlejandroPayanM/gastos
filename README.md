@@ -37,6 +37,8 @@ Si tienes un ingreso fijo quincenal (tu sueldo), la "quincena" de la app va de u
 - **Ajustar un pago:** en Resumen, toca un pago fijo o de tarjeta para cambiar su monto solo en ese periodo.
 - **Estimación:** proyecta tu saldo por quincena, semana o mes a partir de tu saldo de hoy, ingresos fijos, pagos fijos, pagos de tarjeta (por corte y fecha límite) y un gasto del día a día (promedio automático o estimado propio).
 
+- **Sobrante entre quincenas:** por defecto la estimación no arrastra lo que sobra de una quincena a la siguiente (se asume gastado en el día a día, porque no se capturan todos los gastos chicos); un faltante sí se arrastra. En la pestaña Estimación puedes cambiar a "Arrastrar todo" o guardar el sobrante solo de ciertos periodos (por ejemplo diciembre).
+
 Los datos se guardan primero en el dispositivo (usa también el respaldo en Cuentas). Opcionalmente se pueden sincronizar con una cuenta en la nube (ver abajo).
 
 ## Cuenta en la nube (Supabase)
