@@ -1,5 +1,5 @@
 import { addDays, addMonths, clampDay, inRange, monthIndex, parse, weekdayMon, ymd } from './dates';
-import type { Account, DB, Fixed, Period } from './types';
+import type { Account, DB, Fixed, Period, WeekendRule } from './types';
 import { round2 } from './money';
 
 export const isCard = (a?: Account) => a?.kind === 'credito';
@@ -19,19 +19,34 @@ export function fixedOccurrences(f: Fixed, start: string, end: string): string[]
     return out;
   }
 
+  // Se revisa un mes antes y uno después porque al mover por fin de semana
+  // una fecha puede cruzar al mes vecino (p. ej. domingo 1 → viernes 30 del mes anterior).
+  const rule = weekendRule(f);
   const s = parse(lo);
   const e = parse(end);
-  let y = s.y;
-  let m = s.m;
-  while (y < e.y || (y === e.y && m <= e.m)) {
+  const first = addMonths(s.y, s.m, -1);
+  const last = addMonths(e.y, e.m, 1);
+  let { y, m } = first;
+  while (y < last.y || (y === last.y && m <= last.m)) {
     const days = f.freq === 'mensual' ? [f.day ?? 1] : f.days ?? [15, 30];
     for (const dd of days) {
-      const ds = ymd(y, m, clampDay(y, m, dd));
+      const ds = shiftWeekend(ymd(y, m, clampDay(y, m, dd)), rule);
       if (ds >= lo && ds <= end) out.push(ds);
     }
     ({ y, m } = addMonths(y, m, 1));
   }
-  return out.sort();
+  return [...new Set(out)].sort();
+}
+
+/** Qué hacer cuando la fecha cae en sábado o domingo. */
+export const weekendRule = (f: Pick<Fixed, 'freq' | 'weekend'>): WeekendRule => f.weekend ?? (f.freq === 'quincenal' ? 'viernes' : 'igual');
+
+/** Mueve sábado/domingo al viernes anterior o al lunes siguiente, según la regla. */
+export function shiftWeekend(date: string, rule: WeekendRule) {
+  if (rule === 'igual') return date;
+  const w = weekdayMon(date); // 0 = lunes … 5 = sábado, 6 = domingo
+  if (w < 5) return date;
+  return rule === 'viernes' ? addDays(date, -(w - 4)) : addDays(date, 7 - w);
 }
 
 export const fixedKey = (f: Fixed, date: string) => `${f.id}|${date}`;

@@ -30,6 +30,9 @@ export interface Tx {
   accountId?: string;
 }
 
+/** Si la fecha cae en sábado o domingo: adelantar al viernes, pasar al lunes o dejarla igual. */
+export type WeekendRule = 'viernes' | 'lunes' | 'igual';
+
 export interface Fixed {
   id: string;
   name: string;
@@ -42,6 +45,8 @@ export interface Fixed {
   days?: [number, number];
   /** semanal: 0 = lunes … 6 = domingo */
   weekday?: number;
+  /** Regla de fin de semana (por defecto: quincenal → viernes, mensual → igual) */
+  weekend?: WeekendRule;
   accountId?: string;
   category?: string;
   /** No se generan ocurrencias antes de esta fecha */

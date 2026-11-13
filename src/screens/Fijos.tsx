@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, Text } from 'react-native';
 import { DIAS_SEMANA } from '../dates';
-import { findAccount } from '../finance';
+import { findAccount, weekendRule } from '../finance';
 import { FixedForm } from '../forms';
 import { money } from '../money';
 import { useStore } from '../store';
@@ -10,9 +10,11 @@ import type { Fixed } from '../types';
 import { Button, Card, Empty, Row, SectionTitle } from '../ui';
 
 function when(f: Fixed) {
-  if (f.freq === 'mensual') return `Cada mes, día ${f.day}`;
-  if (f.freq === 'quincenal') return `Cada quincena (días ${f.days?.[0]} y ${f.days?.[1]})`;
-  return `Cada ${DIAS_SEMANA[f.weekday ?? 0].toLowerCase()}`;
+  if (f.freq === 'semanal') return `Cada ${DIAS_SEMANA[f.weekday ?? 0].toLowerCase()}`;
+  const rule = weekendRule(f);
+  const weekend = rule === 'viernes' ? ' · fin de semana → viernes' : rule === 'lunes' ? ' · fin de semana → lunes' : '';
+  if (f.freq === 'mensual') return `Cada mes, día ${f.day}${weekend}`;
+  return `Cada quincena (días ${f.days?.[0]} y ${f.days?.[1]})${weekend}`;
 }
 
 export function Fijos() {

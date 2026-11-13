@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Platform, Text, View } from 'react-native';
-import { DIAS_SEMANA, isValidDate, todayStr } from './dates';
+import { addDays, DIAS_SEMANA, formatLong, isValidDate, todayStr } from './dates';
+import { fixedOccurrences, weekendRule } from './finance';
 import { money, parseAmount } from './money';
 import { uid, useStore } from './store';
 import { ACCOUNT_COLORS, CATEGORIAS, C, typeColor, typeLabel } from './theme';
-import type { Account, AccountKind, Fixed, Freq, Plan, Tx, TxType } from './types';
+import type { Account, AccountKind, Fixed, Freq, Plan, Tx, TxType, WeekendRule } from './types';
 import { AccountPicker, Button, Card, Chips, DateField, Field, Label, Row, SectionTitle, Segmented, Sheet } from './ui';
 
 /** Confirmación que funciona en móvil y en web. */
@@ -149,14 +150,21 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
   const [d1, setD1] = useState('15');
   const [d2, setD2] = useState('30');
   const [weekday, setWeekday] = useState('0');
+  const [weekend, setWeekend] = useState<WeekendRule>('igual');
   const [accountId, setAccountId] = useState<string | undefined>();
   const [startDate, setStartDate] = useState(todayStr());
   const [error, setError] = useState('');
+
+  const changeFreq = (f: Freq) => {
+    setFreq(f);
+    setWeekend(f === 'quincenal' ? 'viernes' : 'igual');
+  };
 
   useEffect(() => {
     if (!visible) return;
     setError('');
     if (initial) {
+      setWeekend(weekendRule(initial));
       setKind(initial.kind);
       setName(initial.name);
       setAmount(String(initial.amount));
@@ -176,6 +184,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       setD1('15');
       setD2('30');
       setWeekday('0');
+      setWeekend('igual');
       setAccountId(db.accounts.find((a) => a.kind !== 'credito')?.id);
       setStartDate(todayStr());
     }
@@ -199,11 +208,33 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       day: freq === 'mensual' ? +day : undefined,
       days: freq === 'quincenal' ? [+d1, +d2] : undefined,
       weekday: freq === 'semanal' ? +weekday : undefined,
+      weekend: freq === 'semanal' ? undefined : weekend,
       accountId,
       startDate,
     });
     onClose();
   };
+
+  // Vista previa de las próximas fechas con la regla elegida
+  const previewOk = freq === 'semanal' || (freq === 'mensual' ? dayOk(day) : dayOk(d1) && dayOk(d2));
+  const preview = previewOk
+    ? fixedOccurrences(
+        {
+          id: 'preview',
+          name: '',
+          amount: 0,
+          kind,
+          freq,
+          day: +day,
+          days: [+d1, +d2],
+          weekday: +weekday,
+          weekend,
+          startDate: isValidDate(startDate) ? startDate : todayStr(),
+        },
+        todayStr(),
+        addDays(todayStr(), 100),
+      ).slice(0, 4)
+    : [];
 
   return (
     <Sheet
@@ -235,7 +266,7 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
       <Field label="Monto" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
       <View style={{ marginBottom: 14 }}>
         <Label>Frecuencia</Label>
-        <Segmented value={freq} onChange={setFreq} options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }]} />
+        <Segmented value={freq} onChange={changeFreq} options={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }]} />
       </View>
       {freq === 'mensual' ? <Field label="Día del mes" value={day} onChangeText={setDay} keyboardType="number-pad" hint="Si el mes es más corto se usa el último día." /> : null}
       {freq === 'quincenal' ? (
@@ -253,6 +284,23 @@ export function FixedForm({ visible, initial, onClose }: { visible: boolean; ini
           <Label>Día de la semana</Label>
           <Chips value={weekday} onChange={setWeekday} options={DIAS_SEMANA.map((d, i) => ({ value: String(i), label: d }))} />
         </View>
+      ) : null}
+      {freq !== 'semanal' ? (
+        <View style={{ marginBottom: 14 }}>
+          <Label>Si cae en sábado o domingo</Label>
+          <Chips
+            value={weekend}
+            onChange={setWeekend}
+            options={[
+              { value: 'viernes', label: 'Adelantar al viernes' },
+              { value: 'lunes', label: 'Pasar al lunes' },
+              { value: 'igual', label: 'Dejarlo igual' },
+            ]}
+          />
+        </View>
+      ) : null}
+      {preview.length > 0 ? (
+        <Text style={{ fontSize: 12, color: C.primary, marginBottom: 14 }}>Próximas fechas: {preview.map(formatLong).join('  ·  ')}</Text>
       ) : null}
       <View style={{ marginBottom: 14 }}>
         <Label>{kind === 'ingreso' ? 'Entra a la cuenta' : 'Se paga con'}</Label>

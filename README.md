@@ -19,6 +19,10 @@ npm test              # pruebas de la lógica (periodos, recurrencia, cortes)
 - Compras a meses o un saldo que ya traías: se registran como "plan" dentro de la tarjeta y se suman al pago del mes que corresponde.
 - Un pago fijo con tarjeta de crédito se suma al estado de cuenta en vez de restar de tu débito.
 
+## Fines de semana
+
+Los pagos e ingresos fijos mensuales y quincenales pueden moverse solos cuando su fecha cae en sábado o domingo: adelantar al viernes (por defecto en los quincenales, como el sueldo del 15 y del 30/31), pasar al lunes, o dejarlo igual. El formulario muestra las próximas fechas ya ajustadas. No considera días festivos.
+
 ## Historial, ajustes y estimación
 
 - **Historial:** movimientos y pagos marcados como pagados, por mes o todo, con filtros, búsqueda y exportación a Excel (CSV). Los movimientos capturados se pueden editar o eliminar.
