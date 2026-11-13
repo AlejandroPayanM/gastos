@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { AdjustSheet, type AdjustTarget } from '../adjust';
 import { formatDay, todayStr } from '../dates';
 import { summarize } from '../finance';
 import { money } from '../money';
@@ -29,7 +30,8 @@ function PayButton({ paid, onPress, doneLabel, label }: { paid: boolean; onPress
 }
 
 export function Resumen({ period }: { period: Period }) {
-  const { db, togglePaid } = useStore();
+  const { db, togglePaid, setOverride } = useStore();
+  const [adjust, setAdjust] = useState<AdjustTarget | undefined>();
   const s = summarize(db, period);
   const today = todayStr();
   const neg = s.disponible < 0;
@@ -79,6 +81,17 @@ export function Resumen({ period }: { period: Period }) {
           s.pagos.map((p) => (
             <Row
               key={p.key}
+              onPress={() =>
+                setAdjust({
+                  key: p.key,
+                  title: `${p.account.name} · vence ${formatDay(p.due)}`,
+                  subtitle: `Corte ${formatDay(p.cut)} · calculado ${money(p.computed)}`,
+                  original: p.computed,
+                  current: p.amount,
+                  adjusted: p.adjusted,
+                  paid: p.paid,
+                })
+              }
               left={
                 <>
                   <Text style={{ fontWeight: '700', color: C.text }}>
@@ -88,6 +101,7 @@ export function Resumen({ period }: { period: Period }) {
                   <Text style={{ fontSize: 12, color: C.muted }}>
                     Corte {formatDay(p.cut)} · compras {money(p.charges)}
                     {p.plans ? ` + meses/saldos ${money(p.plans)}` : ''}
+                    {p.adjusted ? ' · ajustado' : ''}
                     {!p.paid && p.due < today ? ' · vencido' : ''}
                   </Text>
                 </>
@@ -113,19 +127,31 @@ export function Resumen({ period }: { period: Period }) {
             return (
               <Row
                 key={o.key}
+                onPress={() =>
+                  setAdjust({
+                    key: o.key,
+                    title: o.fixed.name,
+                    subtitle: formatDay(o.date),
+                    original: o.fixed.amount,
+                    current: o.paid ? db.paid[o.key] : o.amount,
+                    adjusted: o.adjusted,
+                    paid: o.paid,
+                  })
+                }
                 left={
                   <>
                     <Text style={{ fontWeight: '600', color: C.text }}>{o.fixed.name}</Text>
                     <Text style={{ fontSize: 12, color: C.muted }}>
                       {formatDay(o.date)}
+                      {o.adjusted ? ' · ajustado' : ''}
                       {!o.paid && o.date < today ? (inc ? ' · sin confirmar' : ' · vencido') : ''}
                     </Text>
                   </>
                 }
                 right={
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <Text style={{ fontWeight: '800', color: inc ? C.ingreso : C.gasto }}>{money(inc ? o.fixed.amount : -o.fixed.amount)}</Text>
-                    <PayButton paid={o.paid} onPress={() => togglePaid(o.key, o.fixed.amount)} label={inc ? 'Marcar recibido' : 'Marcar pagado'} doneLabel={inc ? 'Recibido' : 'Pagado'} />
+                    <Text style={{ fontWeight: '800', color: inc ? C.ingreso : C.gasto }}>{money(inc ? (o.paid ? db.paid[o.key] : o.amount) : -(o.paid ? db.paid[o.key] : o.amount))}</Text>
+                    <PayButton paid={o.paid} onPress={() => togglePaid(o.key, o.amount)} label={inc ? 'Marcar recibido' : 'Marcar pagado'} doneLabel={inc ? 'Recibido' : 'Pagado'} />
                   </View>
                 }
               />
@@ -152,6 +178,8 @@ export function Resumen({ period }: { period: Period }) {
           </Card>
         </>
       ) : null}
+      <Text style={{ color: C.muted, fontSize: 12 }}>Toca un pago para ajustar su monto solo en ese periodo.</Text>
+      <AdjustSheet target={adjust} onClose={() => setAdjust(undefined)} onSave={setOverride} />
     </ScrollView>
   );
 }

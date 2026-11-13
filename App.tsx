@@ -5,7 +5,9 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { periodFor, shiftPeriod, todayStr } from './src/dates';
 import { TxForm } from './src/forms';
 import { Cuentas } from './src/screens/Cuentas';
+import { Estimacion } from './src/screens/Estimacion';
 import { Fijos } from './src/screens/Fijos';
+import { Historial } from './src/screens/Historial';
 import { Movimientos } from './src/screens/Movimientos';
 import { Resumen } from './src/screens/Resumen';
 import { StoreProvider, useStore } from './src/store';
@@ -13,13 +15,15 @@ import { C } from './src/theme';
 import type { Mode, Period } from './src/types';
 import { Segmented } from './src/ui';
 
-type Tab = 'resumen' | 'movimientos' | 'fijos' | 'cuentas';
+type Tab = 'resumen' | 'movimientos' | 'historial' | 'estimacion' | 'fijos' | 'cuentas';
 
-const TABS: { key: Tab; icon: string; label: string }[] = [
-  { key: 'resumen', icon: '📊', label: 'Resumen' },
-  { key: 'movimientos', icon: '🧾', label: 'Movimientos' },
-  { key: 'fijos', icon: '🔁', label: 'Fijos' },
-  { key: 'cuentas', icon: '💳', label: 'Cuentas' },
+const TABS: { key: Tab; icon: string; label: string; title: string }[] = [
+  { key: 'resumen', icon: '📊', label: 'Resumen', title: 'Resumen' },
+  { key: 'movimientos', icon: '🧾', label: 'Movs.', title: 'Movimientos' },
+  { key: 'historial', icon: '🗂️', label: 'Historial', title: 'Historial' },
+  { key: 'estimacion', icon: '🔮', label: 'Estimación', title: 'Estimación' },
+  { key: 'fijos', icon: '🔁', label: 'Fijos', title: 'Pagos fijos' },
+  { key: 'cuentas', icon: '💳', label: 'Cuentas', title: 'Cuentas' },
 ];
 
 function Shell() {
@@ -52,7 +56,7 @@ function Shell() {
       <StatusBar style="dark" />
       <View style={st.container}>
         <View style={st.header}>
-          <Text style={st.title}>{TABS.find((t) => t.key === tab)?.label}</Text>
+          <Text style={st.title}>{TABS.find((t) => t.key === tab)?.title}</Text>
           {showPeriod ? (
             <>
               <Segmented
@@ -83,6 +87,8 @@ function Shell() {
         <View style={{ flex: 1 }}>
           {tab === 'resumen' && <Resumen period={period} />}
           {tab === 'movimientos' && <Movimientos period={period} />}
+          {tab === 'historial' && <Historial />}
+          {tab === 'estimacion' && <Estimacion />}
           {tab === 'fijos' && <Fijos />}
           {tab === 'cuentas' && <Cuentas />}
         </View>
@@ -94,7 +100,7 @@ function Shell() {
         <View style={st.tabbar}>
           {TABS.map((t) => (
             <Pressable key={t.key} style={st.tab} onPress={() => setTab(t.key)}>
-              <Text style={{ fontSize: 20, opacity: tab === t.key ? 1 : 0.45 }}>{t.icon}</Text>
+              <Text style={{ fontSize: 18, opacity: tab === t.key ? 1 : 0.45 }}>{t.icon}</Text>
               <Text style={[st.tabLabel, tab === t.key && { color: C.primary }]}>{t.label}</Text>
             </Pressable>
           ))}
@@ -143,5 +149,5 @@ const st = StyleSheet.create({
   fabText: { color: '#fff', fontSize: 28, marginTop: -2 },
   tabbar: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: C.line, paddingVertical: 6 },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 },
-  tabLabel: { fontSize: 11, fontWeight: '700', color: C.muted },
+  tabLabel: { fontSize: 10, fontWeight: '700', color: C.muted },
 });

@@ -71,6 +71,9 @@ export interface DB {
   plans: Plan[];
   /** clave de ocurrencia → monto con el que se marcó como pagado/recibido */
   paid: Record<string, number>;
+  /** clave de ocurrencia → monto ajustado solo para ese periodo */
+  overrides: Record<string, number>;
+  settings: { variableEstimate?: number };
 }
 
 export type Mode = 'quincena' | 'semana' | 'mes';

@@ -42,6 +42,9 @@ export interface FixedOcc {
   date: string;
   paid: boolean;
   onCard: boolean;
+  /** Monto de esta ocurrencia (ajustado si lo editaste, si no el del pago fijo) */
+  amount: number;
+  adjusted: boolean;
 }
 
 export function fixedOccs(db: DB, start: string, end: string): FixedOcc[] {
@@ -50,7 +53,8 @@ export function fixedOccs(db: DB, start: string, end: string): FixedOcc[] {
     const onCard = isCard(findAccount(db, f.accountId));
     for (const date of fixedOccurrences(f, start, end)) {
       const key = fixedKey(f, date);
-      out.push({ key, fixed: f, date, paid: key in db.paid, onCard });
+      const adj = db.overrides?.[key];
+      out.push({ key, fixed: f, date, paid: key in db.paid, onCard, amount: adj ?? f.amount, adjusted: adj !== undefined });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
@@ -141,7 +145,11 @@ export interface CardPayment {
   cycleStart: string;
   charges: number;
   plans: number;
+  /** Monto final (pagado, ajustado o calculado) */
   amount: number;
+  /** Monto calculado automáticamente según compras y planes */
+  computed: number;
+  adjusted: boolean;
   paid: boolean;
 }
 
@@ -153,9 +161,13 @@ export function cardPayments(db: DB, start: string, end: string, onlyId?: string
       const charges = cardCharges(db, a, st.cycleStart, st.cut);
       const plans = planAmountDue(db, a, st.due);
       const key = cardKey(a, st.due);
-      const amount = round2(charges + plans);
+      const computed = round2(charges + plans);
       const paid = key in db.paid;
-      if (amount > 0 || paid) out.push({ key, account: a, cut: st.cut, due: st.due, cycleStart: st.cycleStart, charges, plans, amount: paid ? db.paid[key] : amount, paid });
+      const adj = db.overrides?.[key];
+      const amount = paid ? db.paid[key] : adj ?? computed;
+      if (computed > 0 || paid || adj !== undefined) {
+        out.push({ key, account: a, cut: st.cut, due: st.due, cycleStart: st.cycleStart, charges, plans, amount, computed, adjusted: adj !== undefined, paid });
+      }
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
@@ -210,12 +222,12 @@ export function summarize(db: DB, p: Period): Summary {
   let fijosPendientes = 0;
   for (const o of occs) {
     if (o.fixed.kind === 'ingreso') {
-      entradasFijas += o.fixed.amount;
+      entradasFijas += o.amount;
     } else if (o.onCard) {
-      comprasTarjeta += o.fixed.amount;
-      cats.set(o.fixed.category ?? 'Fijos', (cats.get(o.fixed.category ?? 'Fijos') ?? 0) + o.fixed.amount);
+      comprasTarjeta += o.amount;
+      cats.set(o.fixed.category ?? 'Fijos', (cats.get(o.fixed.category ?? 'Fijos') ?? 0) + o.amount);
     } else {
-      const amt = o.paid ? db.paid[o.key] : o.fixed.amount;
+      const amt = o.paid ? db.paid[o.key] : o.amount;
       fijos += amt;
       if (!o.paid) fijosPendientes += amt;
     }

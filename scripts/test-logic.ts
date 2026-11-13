@@ -32,6 +32,8 @@ const db: DB = {
   fixed: [{ id: 'net', name: 'Internet', amount: 350, kind: 'gasto', freq: 'mensual', day: 13, startDate: '2026-01-01', accountId: 'deb' }],
   plans: [{ id: 'p1', accountId: 'nu', name: 'Taller', monthlyAmount: 3215.41, months: 1, firstDue: '2026-12-16' }],
   paid: {},
+  overrides: {},
+  settings: {},
 };
 
 // Estado con corte 26-oct -> pago 16-nov (sin cargos en este ejemplo)

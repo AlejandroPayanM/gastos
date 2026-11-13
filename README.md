@@ -19,4 +19,10 @@ npm test              # pruebas de la lógica (periodos, recurrencia, cortes)
 - Compras a meses o un saldo que ya traías: se registran como "plan" dentro de la tarjeta y se suman al pago del mes que corresponde.
 - Un pago fijo con tarjeta de crédito se suma al estado de cuenta en vez de restar de tu débito.
 
-Los datos se guardan localmente en el dispositivo.
+## Historial, ajustes y estimación
+
+- **Historial:** movimientos y pagos marcados como pagados, por mes o todo, con filtros, búsqueda y exportación a Excel (CSV). Los movimientos capturados se pueden editar o eliminar.
+- **Ajustar un pago:** en Resumen, toca un pago fijo o de tarjeta para cambiar su monto solo en ese periodo.
+- **Estimación:** proyecta tu saldo por quincena, semana o mes a partir de tu saldo de hoy, ingresos fijos, pagos fijos, pagos de tarjeta (por corte y fecha límite) y un gasto del día a día (promedio automático o estimado propio).
+
+Los datos se guardan localmente en el dispositivo (usa el respaldo en Cuentas).

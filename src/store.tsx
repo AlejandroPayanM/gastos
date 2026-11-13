@@ -10,6 +10,8 @@ const DEFAULT_DB: DB = {
   fixed: [],
   plans: [],
   paid: {},
+  overrides: {},
+  settings: {},
 };
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -29,6 +31,10 @@ interface Store {
   togglePaid: (key: string, amount: number) => void;
   /** Reemplaza todos los datos (restaurar respaldo). Devuelve un error si el texto no es válido. */
   restore: (json: string) => string | null;
+  /** Ajusta el monto de una ocurrencia (null = volver al monto original). Si ya estaba pagada, actualiza lo pagado. */
+  setOverride: (key: string, amount: number | null) => void;
+  /** Estimado propio de gasto variable por quincena (undefined = usar el promedio). */
+  setVariableEstimate: (amount: number | undefined) => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -88,6 +94,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const setOverride = useCallback(
+    (key: string, amount: number | null) =>
+      setDb((d) => {
+        const overrides = { ...d.overrides };
+        const paid = { ...d.paid };
+        if (amount === null) delete overrides[key];
+        else {
+          overrides[key] = amount;
+          if (key in paid) paid[key] = amount;
+        }
+        return { ...d, overrides, paid };
+      }),
+    [],
+  );
+  const setVariableEstimate = useCallback((amount: number | undefined) => setDb((d) => ({ ...d, settings: { ...d.settings, variableEstimate: amount } })), []);
+
   const restore = useCallback((json: string) => {
     let data: any;
     try {
@@ -98,13 +120,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (data?.app === 'mis-gastos' && data.db) data = data.db;
     const ok = data && ['accounts', 'txs', 'fixed', 'plans'].every((k) => Array.isArray(data[k])) && data.paid && typeof data.paid === 'object';
     if (!ok || data.accounts.length === 0) return 'El respaldo está incompleto o no es de esta app.';
-    setDb({ accounts: data.accounts, txs: data.txs, fixed: data.fixed, plans: data.plans, paid: data.paid });
+    setDb({ accounts: data.accounts, txs: data.txs, fixed: data.fixed, plans: data.plans, paid: data.paid, overrides: data.overrides ?? {}, settings: data.settings ?? {} });
     return null;
   }, []);
 
   const value = useMemo(
-    () => ({ db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore }),
-    [db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore],
+    () => ({ db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate }),
+    [db, ready, saveTx, deleteTx, saveFixed, deleteFixed, saveAccount, deleteAccount, savePlan, deletePlan, togglePaid, restore, setOverride, setVariableEstimate],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
