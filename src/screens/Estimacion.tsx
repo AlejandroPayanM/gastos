@@ -9,6 +9,11 @@ import type { Mode } from '../types';
 import { Button, Card, Field, Row, SectionTitle, Segmented } from '../ui';
 
 const COUNT: Record<Mode, number> = { quincena: 6, semana: 8, mes: 4 };
+/** Meses desde el actual hasta diciembre (en diciembre, 4 meses para ver lo que sigue). */
+const monthsToDecember = (today: string) => {
+  const m = Number(today.slice(5, 7));
+  return m === 12 ? COUNT.mes : 13 - m;
+};
 const UNIT: Record<Mode, string> = { quincena: 'quincena', semana: 'semana', mes: 'mes' };
 const kindColor = { ingreso: C.ingreso, fijo: C.gasto, tarjeta: C.tarjeta, programado: C.imprevisto } as const;
 
@@ -20,7 +25,7 @@ export function Estimacion() {
   const [editing, setEditing] = useState(false);
   const today = todayStr();
 
-  const proj = useMemo(() => projection(db, mode, today, COUNT[mode]), [db, mode, today]);
+  const proj = useMemo(() => projection(db, mode, today, mode === 'mes' ? monthsToDecember(today) : COUNT[mode]), [db, mode, today]);
   const hasData = db.fixed.length > 0 || db.txs.length > 0 || db.plans.length > 0;
   const negative = proj.lowest && proj.lowest.endBalance < 0 ? proj.lowest : undefined;
   const cur = proj.rows[0];
