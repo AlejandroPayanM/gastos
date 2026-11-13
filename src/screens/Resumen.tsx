@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { AdjustSheet, type AdjustTarget } from '../adjust';
 import { formatDay, todayStr } from '../dates';
-import { summarize } from '../finance';
-import { money } from '../money';
+import { cashNow, summarize } from '../finance';
+import { money, round2 } from '../money';
 import { useStore } from '../store';
 import { C } from '../theme';
 import type { Period } from '../types';
@@ -36,21 +36,55 @@ export function Resumen({ period }: { period: Period }) {
   const today = todayStr();
   const neg = s.disponible < 0;
 
+  // "Hoy": lo que realmente hay en cuentas menos lo que falta por pagar en este periodo,
+  // sin contar ingresos que todavía no marcas como recibidos.
+  const isCurrent = today >= period.start && today <= period.end;
+  const cash = cashNow(db, today);
+  const availToday = round2(cash - s.pendiente);
+
   const fixedList = s.occs.filter((o) => !o.onCard);
   const maxCat = Math.max(1, ...s.byCategory.map((c) => c.total));
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
-      <Card style={{ backgroundColor: neg ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
-        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Disponible del periodo</Text>
-        <Text style={{ color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 2 }}>{money(s.disponible)}</Text>
-        <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
-          Entradas {money(s.entradas)} − salidas {money(s.salidas)}
-        </Text>
-        {s.pendiente > 0 ? (
-          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 8 }}>Por pagar todavía: {money(s.pendiente)}</Text>
-        ) : null}
-      </Card>
+      {isCurrent ? (
+        <>
+          <Card style={{ backgroundColor: availToday < 0 ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Disponible hoy</Text>
+            <Text style={{ color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 2 }}>{money(availToday)}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13 }}>
+              En cuentas {money(cash)} − por pagar en este periodo {money(s.pendiente)}
+            </Text>
+            {s.entradasPorRecibir > 0 ? (
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 6 }}>
+                No cuenta {money(s.entradasPorRecibir)} de ingresos que aún no marcas como recibidos.
+              </Text>
+            ) : null}
+            {cash === 0 ? (
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 6 }}>Pon tu saldo real en Cuentas para que esto sea exacto.</Text>
+            ) : null}
+          </Card>
+          <Card>
+            <Text style={{ color: C.muted, fontSize: 13, fontWeight: '600' }}>Proyectado al cierre del periodo</Text>
+            <Text style={{ color: neg ? C.danger : C.text, fontSize: 24, fontWeight: '800' }}>{money(s.disponible)}</Text>
+            <Text style={{ color: C.muted, fontSize: 12 }}>
+              Entradas {money(s.entradas)} − salidas {money(s.salidas)}
+              {s.entradasPorRecibir > 0 ? ` · incluye ${money(s.entradasPorRecibir)} por recibir` : ''}
+            </Text>
+          </Card>
+        </>
+      ) : (
+        <Card style={{ backgroundColor: neg ? '#7F1D1D' : C.primary, borderColor: 'transparent' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Disponible del periodo</Text>
+          <Text style={{ color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 2 }}>{money(s.disponible)}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
+            Entradas {money(s.entradas)} − salidas {money(s.salidas)}
+          </Text>
+          {s.pendiente > 0 ? (
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 8 }}>Por pagar todavía: {money(s.pendiente)}</Text>
+          ) : null}
+        </Card>
+      )}
 
       <SectionTitle>Desglose</SectionTitle>
       <Card>
@@ -65,7 +99,7 @@ export function Resumen({ period }: { period: Period }) {
           note={s.pagos.length ? 'calculados según corte y fecha límite' : 'ninguna fecha límite en este periodo'}
         />
         <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
-        <Line label="Disponible" value={money(s.disponible)} bold color={neg ? C.danger : C.text} />
+        <Line label="Disponible proyectado" value={money(s.disponible)} bold color={neg ? C.danger : C.text} />
         {s.comprasTarjeta > 0 ? (
           <Text style={{ color: C.muted, fontSize: 12, marginTop: 6 }}>
             Además cargaste {money(s.comprasTarjeta)} a tarjetas en este periodo; se pagarán en la fecha límite de su estado de cuenta.

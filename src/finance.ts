@@ -195,6 +195,8 @@ export function cardPayments(db: DB, start: string, end: string, onlyId?: string
 export interface Summary {
   entradas: number;
   entradasFijas: number;
+  /** Ingresos fijos del periodo que todavía no marcas como recibidos */
+  entradasPorRecibir: number;
   gastos: number;
   imprevistos: number;
   fijos: number;
@@ -233,11 +235,13 @@ export function summarize(db: DB, p: Period): Summary {
 
   const occs = fixedOccs(db, p.start, p.end);
   let entradasFijas = 0;
+  let entradasPorRecibir = 0;
   let fijos = 0;
   let fijosPendientes = 0;
   for (const o of occs) {
     if (o.fixed.kind === 'ingreso') {
       entradasFijas += o.amount;
+      if (!o.paid) entradasPorRecibir += o.amount;
     } else if (o.onCard) {
       comprasTarjeta += o.amount;
       cats.set(o.fixed.category ?? 'Fijos', (cats.get(o.fixed.category ?? 'Fijos') ?? 0) + o.amount);
@@ -258,6 +262,7 @@ export function summarize(db: DB, p: Period): Summary {
   return {
     entradas: round2(entradas),
     entradasFijas: round2(entradasFijas),
+    entradasPorRecibir: round2(entradasPorRecibir),
     gastos: round2(gastos),
     imprevistos: round2(imprevistos),
     fijos: round2(fijos),
@@ -285,9 +290,9 @@ export function accountBalance(db: DB, a: Account, today: string) {
     if (t.accountId !== a.id || t.date > today) continue;
     bal += t.type === 'ingreso' ? t.amount : -t.amount;
   }
+  // Lo que marcaste como pagado/recibido ya movió el dinero, aunque su fecha sea posterior a hoy.
   for (const [key, amount] of Object.entries(db.paid)) {
-    const [id, date] = key.split('|');
-    if (date > today) continue;
+    const [id] = key.split('|');
     if (id.startsWith('card:')) {
       const card = findAccount(db, id.slice(5));
       if (card?.payFromId === a.id) bal -= amount;
@@ -297,6 +302,11 @@ export function accountBalance(db: DB, a: Account, today: string) {
     }
   }
   return round2(bal);
+}
+
+/** Dinero que realmente hay hoy en cuentas de débito y efectivo. */
+export function cashNow(db: DB, today: string) {
+  return round2(db.accounts.filter((a) => !isCard(a)).reduce((s, a) => s + accountBalance(db, a, today), 0));
 }
 
 export interface CardStatus {

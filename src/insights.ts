@@ -198,8 +198,8 @@ export function projection(db: DB, mode: Mode, today: string, count: number): Pr
   let balance = startBalance;
   for (let i = 0; i < count; i++) {
     const isCurrent = i === 0;
-    // Lo ya pagado hasta hoy ya está en el saldo; lo demás todavía falta.
-    const ahead = (paid: boolean, date: string) => !paid || date > today;
+    // Lo ya marcado como pagado/recibido ya está en el saldo; lo demás todavía falta.
+    const ahead = (paid: boolean, _date: string) => !paid;
     const items: ProjItem[] = [];
     let entradas = 0;
     let fijos = 0;

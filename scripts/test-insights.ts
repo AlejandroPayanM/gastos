@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cardPayments, fixedOccs, summarize } from '../src/finance';
+import { cardPayments, cashNow, fixedOccs, summarize } from '../src/finance';
 import { historyRows, historyTotals, projection, toCsv } from '../src/insights';
 import { periodFor } from '../src/dates';
 import type { DB } from '../src/types';
@@ -103,6 +103,27 @@ const today = '2026-11-12';
   assert.ok(csv.includes('"Super, y ""otros"""'));
   assert.ok(csv.includes(',-300.00'));
   assert.equal(csv.split('\r\n').length, 6);
+}
+
+// --- Disponible hoy: el ingreso fijo aún no recibido no cuenta ---
+{
+  const db = mk();
+  const p = periodFor('quincena', today);
+  const s = summarize(db, p);
+  assert.equal(cashNow(db, today), 1800);
+  assert.equal(s.entradasPorRecibir, 9000);
+  assert.equal(s.pendiente, 1350); // gasolina + internet del 13
+  assert.equal(cashNow(db, today) - s.pendiente, 450); // disponible hoy
+  assert.equal(s.disponible, 9000 - 1350 - 300); // proyectado de la quincena: sueldo − fijos − imprevisto ya gastado
+
+  // Al marcar el sueldo como recibido (aunque su fecha sea el 13 y hoy el 12) ya cuenta en el saldo
+  db.paid['s|2026-11-13'] = 9000;
+  const s2 = summarize(db, p);
+  assert.equal(s2.entradasPorRecibir, 0);
+  assert.equal(cashNow(db, today), 10800);
+  assert.equal(cashNow(db, today) - s2.pendiente, 9450);
+  // La estimación no lo cuenta dos veces
+  assert.equal(projection(db, 'quincena', today, 1).rows[0].endBalance, 10800 - 1350);
 }
 
 console.log('OK: insights (estimación, ajustes, historial, csv)');
