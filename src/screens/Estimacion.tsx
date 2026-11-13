@@ -1,16 +1,30 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { formatDay, todayStr } from '../dates';
+import { addMonths, daysInMonth, formatDay, parse, periodFor, shiftPeriod, todayStr, ymd } from '../dates';
+import { cycleOf } from '../finance';
 import { projection, type ProjRow } from '../insights';
 import { money, parseAmount } from '../money';
 import { useStore } from '../store';
 import { C } from '../theme';
-import type { Mode } from '../types';
+import type { DB, Mode } from '../types';
 import { Button, Card, Field, Row, SectionTitle, Segmented } from '../ui';
 
 const COUNT: Record<Mode, number> = { quincena: 6, semana: 8, mes: 4 };
 /** Meses desde el actual hasta diciembre del año siguiente. */
 const monthsToNextDecember = (today: string) => 13 - Number(today.slice(5, 7)) + 12;
+/**
+ * Quincenas visibles: hasta el último día del mes que queda 8 meses adelante (en nov-2026, hasta julio 2027).
+ * Con el tiempo el horizonte avanza y se "desbloquean" más quincenas.
+ */
+function quincenasAhead(db: DB, today: string) {
+  const { y, m } = parse(today);
+  const t = addMonths(y, m, 8);
+  const horizon = ymd(t.y, t.m, daysInMonth(t.y, t.m));
+  const cycle = cycleOf(db);
+  let n = 0;
+  for (let p = periodFor('quincena', today, cycle); p.start <= horizon; p = shiftPeriod(p, 1, cycle)) n++;
+  return n;
+}
 const UNIT: Record<Mode, string> = { quincena: 'quincena', semana: 'semana', mes: 'mes' };
 const kindColor = { ingreso: C.ingreso, fijo: C.gasto, tarjeta: C.tarjeta, programado: C.imprevisto } as const;
 
@@ -22,7 +36,7 @@ export function Estimacion() {
   const [editing, setEditing] = useState(false);
   const today = todayStr();
 
-  const proj = useMemo(() => projection(db, mode, today, mode === 'mes' ? monthsToNextDecember(today) : COUNT[mode]), [db, mode, today]);
+  const proj = useMemo(() => projection(db, mode, today, mode === 'mes' ? monthsToNextDecember(today) : mode === 'quincena' ? quincenasAhead(db, today) : COUNT[mode]), [db, mode, today]);
   const hasData = db.fixed.length > 0 || db.txs.length > 0 || db.plans.length > 0;
   const negative = proj.lowest && proj.lowest.endBalance < 0 ? proj.lowest : undefined;
   const cur = proj.rows[0];
